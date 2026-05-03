@@ -1,0 +1,91 @@
+{
+  "workspace": {
+    "name": "Internet Banking",
+    "description": "Example C4 workspace",
+    "model": {
+      "people": [
+        {
+          "id": "1",
+          "name": "Personal Banking Customer",
+          "description": "A customer of the bank",
+          "tags": "Element,Person",
+          "relationships": [
+            {"id": "5", "destinationId": "3", "description": "Uses", "tags": "Relationship"},
+            {"id": "6", "destinationId": "2", "description": "Visits", "technology": "HTTPS", "tags": "Relationship"}
+          ]
+        }
+      ],
+      "softwareSystems": [
+        {
+          "id": "2",
+          "name": "Internet Banking System",
+          "description": "Allows customers to view information",
+          "tags": "Element,Software System",
+          "containers": [
+            {
+              "id": "3",
+              "name": "Single-Page App",
+              "description": "Provides banking UI",
+              "technology": "JavaScript, Angular",
+              "tags": "Element,Container",
+              "relationships": [
+                {"id": "7", "destinationId": "4", "description": "Makes API calls", "technology": "JSON/HTTPS", "tags": "Relationship"}
+              ]
+            },
+            {
+              "id": "4",
+              "name": "API Application",
+              "description": "Provides internet banking API",
+              "technology": "Java, Spring Boot",
+              "tags": "Element,Container",
+              "relationships": [
+                {"id": "8", "destinationId": "9", "description": "Reads/writes", "technology": "JDBC", "tags": "Relationship"}
+              ]
+            },
+            {
+              "id": "9",
+              "name": "Database",
+              "description": "Stores user data",
+              "technology": "Oracle",
+              "tags": "Element,Container",
+              "relationships": []
+            }
+          ],
+          "relationships": []
+        },
+        {
+          "id": "10",
+          "name": "E-mail System",
+          "description": "External e-mail",
+          "tags": "Element,Software System,External",
+          "containers": [],
+          "relationships": []
+        }
+      ]
+    },
+    "views": {
+      "systemContextViews": [
+        {
+          "softwareSystemId": "2",
+          "key": "SystemContext",
+          "title": "System Context",
+          "elements": [
+            {"id": "1"}, {"id": "2"}, {"id": "10"}
+          ],
+          "automaticLayout": {"rankDirection": "TopBottom"}
+        }
+      ],
+      "containerViews": [
+        {
+          "softwareSystemId": "2",
+          "key": "Containers",
+          "title": "Container Diagram",
+          "elements": [
+            {"id": "1"}, {"id": "3"}, {"id": "4"}, {"id": "9"}, {"id": "10"}
+          ],
+          "automaticLayout": {"rankDirection": "TopBottom"}
+        }
+      ]
+    }
+  }
+}

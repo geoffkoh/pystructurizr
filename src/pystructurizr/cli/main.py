@@ -1,0 +1,103 @@
+"""pystructurizr CLI entry point."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import click
+
+from pystructurizr.generators.mermaid import MermaidGenerator
+from pystructurizr.parser import parse_dsl, parse_json
+
+
+def _load_workspace(path: Path):
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return parse_json(path.read_text(encoding="utf-8"))
+    if suffix in (".dsl", ".structurizr", ""):
+        return parse_dsl(path.read_text(encoding="utf-8"))
+    raise click.BadParameter(f"Unsupported file type: {suffix}. Use .dsl or .json")
+
+
+@click.group()
+@click.version_option()
+def cli() -> None:
+    """pystructurizr – parse Structurizr files and generate C4 diagrams."""
+
+
+@cli.command("generate")
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output", "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory (default: print to stdout).",
+)
+@click.option(
+    "--view", "-v",
+    "view_key",
+    default=None,
+    help="Only generate for this view key.",
+)
+@click.option(
+    "--format", "-f",
+    "fmt",
+    type=click.Choice(["mermaid"], case_sensitive=False),
+    default="mermaid",
+    show_default=True,
+)
+def generate(input_file: Path, output: Path | None, view_key: str | None, fmt: str) -> None:
+    """Generate diagrams from INPUT_FILE (DSL or JSON)."""
+    workspace = _load_workspace(input_file)
+    generator = MermaidGenerator(workspace)
+
+    diagrams = generator.generate_all()
+    if view_key:
+        if view_key not in diagrams:
+            available = ", ".join(diagrams) or "(none)"
+            raise click.ClickException(
+                f"View '{view_key}' not found. Available: {available}"
+            )
+        diagrams = {view_key: diagrams[view_key]}
+
+    if output is None:
+        for key, content in diagrams.items():
+            if len(diagrams) > 1:
+                click.echo(f"--- {key} ---")
+            click.echo(content)
+            if len(diagrams) > 1:
+                click.echo()
+    else:
+        output.mkdir(parents=True, exist_ok=True)
+        ext = ".mmd"
+        for key, content in diagrams.items():
+            out_path = output / f"{key}{ext}"
+            out_path.write_text(content, encoding="utf-8")
+            click.echo(f"Written: {out_path}")
+
+
+@cli.command("list-views")
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+def list_views(input_file: Path) -> None:
+    """List all views defined in INPUT_FILE."""
+    workspace = _load_workspace(input_file)
+    if not workspace.views:
+        click.echo("No views found.")
+        return
+    click.echo(f"{'Key':<30} {'Type':<20} {'Element ID'}")
+    click.echo("-" * 65)
+    for view in workspace.views:
+        click.echo(f"{view.key:<30} {view.type:<20} {view.element_id}")
+
+
+@cli.command("serve")
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--port", default=8080, show_default=True, help="Port to listen on.")
+@click.option("--host", default="127.0.0.1", show_default=True)
+def serve(input_file: Path, port: int, host: str) -> None:
+    """Launch the web viewer for INPUT_FILE."""
+    from pystructurizr.web.app import run_app
+
+    workspace = _load_workspace(input_file)
+    run_app(workspace, host=host, port=port)

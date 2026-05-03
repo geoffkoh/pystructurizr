@@ -1,0 +1,27 @@
+[project]
+name = "pystructurizr"
+version = "0.1.0"
+description = "Parse Structurizr DSL/JSON and generate C4 diagrams in Mermaid, with CLI and web viewer"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.1",
+    "nicegui>=2.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+pystructurizr = "pystructurizr.cli.main:cli"
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
