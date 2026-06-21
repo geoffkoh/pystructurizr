@@ -274,6 +274,9 @@ def _parse_relationship_view(data: dict[str, Any]) -> RelationshipView:
         order=str(data.get("order", "")),
         response=data.get("response"),
         properties=_properties(data.get("properties")),
+        title=data.get("title", ""),
+        link=data.get("link"),
+        link_element=data.get("linkElement"),
     )
 
 
@@ -305,6 +308,10 @@ def _parse_view(data: dict[str, Any], view_type: ViewType) -> View:
         properties=_properties(data.get("properties")),
         relationship_views=relationship_views,
         animations=animations,
+        owner=data.get("owner", ""),
+        disable_automatic_layout=bool(data.get("disableAutomaticLayout", False)),
+        hide_element_metadata=bool(data.get("hideElementMetadata", False)),
+        hide_relationship_metadata=bool(data.get("hideRelationshipMetadata", False)),
     )
 
 
@@ -432,4 +439,11 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         deployment_nodes=deployment_nodes,
         deployment_environments=deployment_environments,
         configuration=_parse_configuration(ws_data.get("views", {}).get("configuration")),
+        id=str(ws_data.get("id", "")),
+        version=int(ws_data.get("version", 1)),
+        revision=int(ws_data.get("revision", 1)),
+        last_modified_date=ws_data.get("lastModifiedDate", ""),
+        last_modified_by=ws_data.get("lastModifiedUser", ws_data.get("lastModifiedBy", "")),
+        created_date=ws_data.get("createdDate", ""),
+        created_by=ws_data.get("createdUser", ws_data.get("createdBy", "")),
     )

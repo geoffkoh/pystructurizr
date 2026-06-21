@@ -403,6 +403,10 @@ class ViewElement:
     id: str
     x: Optional[int] = None
     y: Optional[int] = None
+    title: str = ""
+    description: str = ""
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 
 @dataclass
@@ -419,6 +423,9 @@ class RelationshipView:
     jump: Optional[bool] = None
     position: Optional[int] = None
     properties: dict[str, str] = field(default_factory=dict)
+    title: str = ""
+    link: Optional[bool] = None
+    link_element: Optional[int] = None
 
 
 @dataclass
@@ -439,6 +446,10 @@ class View:
     paper_size: Optional[PaperSize] = None
     relationship_views: list[RelationshipView] = field(default_factory=list)
     animations: list[Animation] = field(default_factory=list)
+    owner: str = ""
+    disable_automatic_layout: bool = False
+    hide_element_metadata: bool = False
+    hide_relationship_metadata: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -500,15 +511,15 @@ class Styles:
 class Terminology:
     """Custom label overrides for each element type."""
 
-    enterprise: str = ""
-    person: str = ""
-    software_system: str = ""
-    container: str = ""
-    component: str = ""
-    code: str = ""
-    deployment_node: str = ""
-    infrastructure_node: str = ""
-    relationship: str = ""
+    enterprise: str = "Enterprise"
+    person: str = "Person"
+    software_system: str = "Software System"
+    container: str = "Container"
+    component: str = "Component"
+    code: str = "Code"
+    deployment_node: str = "Deployment Node"
+    infrastructure_node: str = "Infrastructure Node"
+    relationship: str = "Relationship"
 
 
 @dataclass
@@ -542,6 +553,13 @@ class Workspace:
     deployment_environments: list[str] = field(default_factory=list)
     enterprise: Optional[Enterprise] = None
     configuration: Configuration = field(default_factory=Configuration)
+    id: str = ""
+    version: int = 1
+    revision: int = 1
+    last_modified_date: str = ""
+    last_modified_by: str = ""
+    created_date: str = ""
+    created_by: str = ""
 
     def find_element(
         self, element_id: str
