@@ -449,6 +449,7 @@ class View:
     properties: dict[str, str] = field(default_factory=dict)
     paper_size: Optional[PaperSize] = None
     relationship_views: list[RelationshipView] = field(default_factory=list)
+    element_views: list[ViewElement] = field(default_factory=list)
     animations: list[Animation] = field(default_factory=list)
     owner: str = ""
     disable_automatic_layout: bool = False

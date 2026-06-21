@@ -11,16 +11,20 @@ This module exposes `main()`. Run with `uv run python -m pystructurizr.viewer.ap
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from nicegui import ui
 
 from pystructurizr.generators.mermaid import MermaidGenerator
-from pystructurizr.models import DeploymentNode, Workspace
+from pystructurizr.models import DeploymentNode, View, Workspace
 from pystructurizr.parser.dsl import ParseError, parse_dsl_file
-from pystructurizr.viewer.cytoscape_view import DEFAULT_STYLESHEET, to_cytoscape_elements
+from pystructurizr.viewer.cytoscape_view import (
+    DEFAULT_STYLESHEET,
+    apply_positions,
+    to_cytoscape_elements,
+)
 
 
 TreeNode = dict[str, Any]
@@ -139,7 +143,7 @@ def _on_node_selected(node_id: Optional[str]) -> None:
     _render_canvas.refresh()
 
 
-def _current_view() -> Optional[Any]:
+def _current_view() -> Optional[View]:
     if _state.workspace is None or _state.current_view_key is None:
         return None
     for v in _state.workspace.views:
@@ -148,28 +152,88 @@ def _current_view() -> Optional[Any]:
     return None
 
 
+def _workspace_json_path() -> Optional[Path]:
+    if not _state.folder_path:
+        return None
+    return Path(_state.folder_path).expanduser() / "workspace.json"
+
+
 def _draw_cytoscape() -> None:
-    """Push the current view's elements into the browser Cytoscape instance."""
+    """Push the current view's elements into the browser Cytoscape instance.
+
+    Honors any pre-positioned nodes (preset layout) and resets the
+    in-browser cyPositions buffer so subsequent drags accumulate fresh.
+    """
     view = _current_view()
     if view is None or _state.workspace is None:
         return
     elements = to_cytoscape_elements(_state.workspace, view)
+    has_preset = any("position" in el for el in elements)
+    layout = "{ name: 'preset' }" if has_preset else "{ name: 'cose', animate: false, padding: 30 }"
     js = f"""
     (function() {{
       if (typeof cytoscape === 'undefined') {{ return; }}
       var container = document.getElementById('cy-canvas');
       if (!container) {{ return; }}
       if (window._cy_instance) {{ window._cy_instance.destroy(); }}
+      window.cyPositions = {{}};
       window._cy_instance = cytoscape({{
         container: container,
         elements: {json.dumps(elements)},
         style: {json.dumps(DEFAULT_STYLESHEET)},
-        layout: {{ name: 'cose', animate: false, padding: 30 }},
+        layout: {layout},
         wheelSensitivity: 0.2,
+      }});
+      window._cy_instance.on('dragfree', 'node', function(evt) {{
+        var n = evt.target;
+        window.cyPositions[n.id()] = {{
+          x: Math.round(n.position('x')),
+          y: Math.round(n.position('y')),
+        }};
       }});
     }})();
     """
     ui.run_javascript(js)
+
+
+def _workspace_to_dict(ws: Workspace) -> dict[str, Any]:
+    """Serialize Workspace to a JSON-safe dict via dataclasses.asdict.
+
+    All pystructurizr enums extend `str`, so they round-trip natively
+    through json.dumps without a custom encoder.
+    """
+    return asdict(ws)
+
+
+async def _on_save_clicked() -> None:
+    """Harvest drag positions from the browser and write workspace.json."""
+    if _state.workspace is None:
+        ui.notify("No workspace loaded.", type="warning")
+        return
+    target = _workspace_json_path()
+    if target is None:
+        ui.notify("Workspace folder unknown — reload first.", type="warning")
+        return
+    view = _current_view()
+    if view is not None and _state.canvas_mode == "Cytoscape":
+        try:
+            raw = await ui.run_javascript("return window.cyPositions || {};", timeout=3.0)
+        except TimeoutError:
+            raw = {}
+        if isinstance(raw, dict) and raw:
+            positions: dict[str, tuple[int, int]] = {
+                str(k): (int(v["x"]), int(v["y"]))
+                for k, v in raw.items()
+                if isinstance(v, dict) and "x" in v and "y" in v
+            }
+            if positions:
+                apply_positions(view, positions)
+    try:
+        target.write_text(json.dumps(_workspace_to_dict(_state.workspace), indent=2))
+    except OSError as exc:
+        ui.notify(f"Could not write {target}: {exc}", type="negative")
+        return
+    ui.notify(f"Saved {target}", type="positive")
 
 
 @ui.refreshable
@@ -188,6 +252,8 @@ def _render_canvas() -> None:
             value=_state.canvas_mode,
             on_change=_on_canvas_mode_change,
         ).props("dense")
+        ui.space()
+        ui.button("Save", icon="save", on_click=_on_save_clicked).props("flat color=primary")
 
     if _state.canvas_mode == "Mermaid":
         if not _state.mermaid_cache:

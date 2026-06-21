@@ -11,6 +11,7 @@ from pystructurizr.models import (
     Person,
     SoftwareSystem,
     View,
+    ViewElement,
     ViewType,
     Workspace,
 )
@@ -69,23 +70,41 @@ def _node(eid: str, label: str, kind: str, x: int | None = None, y: int | None =
 
 
 def to_cytoscape_elements(workspace: Workspace, view: View) -> list[CytoscapeElement]:
-    """Return a Cytoscape elements list (nodes + edges) for the given view."""
+    """Return a Cytoscape elements list (nodes + edges) for the given view.
+
+    Uses stored ViewElement positions when available so previously
+    persisted layouts survive a re-render.
+    """
     visible = _visible_ids(workspace, view)
+    positions: dict[str, tuple[int, int]] = {
+        ve.id: (ve.x, ve.y)
+        for ve in view.element_views
+        if ve.x is not None and ve.y is not None
+    }
+
+    def pos(eid: str) -> tuple[int | None, int | None]:
+        xy = positions.get(eid)
+        return xy if xy is not None else (None, None)
+
     nodes: list[CytoscapeElement] = []
 
     for p in workspace.people:
         if p.id in visible:
-            nodes.append(_node(p.id, p.name, _person_kind(p)))
+            x, y = pos(p.id)
+            nodes.append(_node(p.id, p.name, _person_kind(p), x, y))
 
     for s in workspace.software_systems:
         if s.id in visible:
-            nodes.append(_node(s.id, s.name, _system_kind(s)))
+            x, y = pos(s.id)
+            nodes.append(_node(s.id, s.name, _system_kind(s), x, y))
         for c in s.containers:
             if c.id in visible:
-                nodes.append(_node(c.id, c.name, "container"))
+                x, y = pos(c.id)
+                nodes.append(_node(c.id, c.name, "container", x, y))
             for comp in c.components:
                 if comp.id in visible:
-                    nodes.append(_node(comp.id, comp.name, "component"))
+                    x, y = pos(comp.id)
+                    nodes.append(_node(comp.id, comp.name, "component", x, y))
 
     edges: list[CytoscapeElement] = []
     for rel in workspace.all_relationships_for(visible):
@@ -99,6 +118,22 @@ def to_cytoscape_elements(workspace: Workspace, view: View) -> list[CytoscapeEle
         })
 
     return nodes + edges
+
+
+def apply_positions(view: View, positions: dict[str, tuple[int, int]]) -> None:
+    """Update view.element_views with the given id → (x, y) positions.
+
+    Adds a ViewElement for any id not already present. Existing entries
+    are updated in place to preserve any other fields the user set.
+    """
+    existing = {ve.id: ve for ve in view.element_views}
+    for eid, (x, y) in positions.items():
+        ve = existing.get(eid)
+        if ve is None:
+            view.element_views.append(ViewElement(id=eid, x=x, y=y))
+        else:
+            ve.x = x
+            ve.y = y
 
 
 # Cytoscape stylesheet expressed as plain dicts — serialized to JS as-is.
