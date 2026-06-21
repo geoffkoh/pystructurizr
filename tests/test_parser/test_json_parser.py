@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from pystructurizr.models import Location
 from pystructurizr.parser.json_parser import parse_json, parse_json_file
@@ -38,3 +39,53 @@ def test_external_system_flag():
     ws = parse_json_file(FIXTURES / "example.json")
     email = next(s for s in ws.software_systems if s.name == "E-mail System")
     assert email.location == Location.EXTERNAL
+
+
+def test_container_parent_id_set_from_json():
+    ws = parse_json_file(FIXTURES / "example.json")
+    banking = next(s for s in ws.software_systems if s.name == "Internet Banking System")
+    assert banking.containers, "fixture should have containers"
+    for c in banking.containers:
+        assert c.parent_id == banking.id
+
+
+def test_deployment_hierarchy_parent_id_from_json():
+    raw = json.dumps({
+        "workspace": {
+            "name": "W",
+            "model": {
+                "deploymentNodes": [
+                    {
+                        "id": "1",
+                        "name": "AWS",
+                        "instances": 2,
+                        "children": [{"id": "2", "name": "EC2"}],
+                        "infrastructureNodes": [{"id": "3", "name": "LB"}],
+                    }
+                ],
+            },
+        }
+    })
+    ws = parse_json(raw)
+    aws = ws.deployment_nodes[0]
+    assert aws.parent_id == ""
+    assert aws.instances == 2
+    assert aws.children[0].parent_id == "1"
+    assert aws.infrastructure_nodes[0].parent_id == "1"
+
+
+def test_perspective_title_from_json():
+    raw = json.dumps({
+        "workspace": {
+            "name": "W",
+            "model": {
+                "people": [
+                    {"id": "1", "name": "User", "perspectives": [
+                        {"name": "Security", "title": "Sec view", "value": "high"}
+                    ]}
+                ],
+            },
+        }
+    })
+    ws = parse_json(raw)
+    assert ws.people[0].perspectives[0].title == "Sec view"
