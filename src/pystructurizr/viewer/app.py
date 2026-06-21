@@ -10,6 +10,7 @@ This module exposes `main()`. Run with `uv run python -m pystructurizr.viewer.ap
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -19,9 +20,12 @@ from nicegui import ui
 from pystructurizr.generators.mermaid import MermaidGenerator
 from pystructurizr.models import DeploymentNode, Workspace
 from pystructurizr.parser.dsl import ParseError, parse_dsl_file
+from pystructurizr.viewer.cytoscape_view import DEFAULT_STYLESHEET, to_cytoscape_elements
 
 
 TreeNode = dict[str, Any]
+
+CYTOSCAPE_CDN = '<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>'
 
 
 @dataclass
@@ -32,6 +36,7 @@ class ViewerState:
     folder_path: str = ""
     current_view_key: Optional[str] = None
     mermaid_cache: dict[str, str] = field(default_factory=dict)
+    canvas_mode: str = "Mermaid"  # 'Mermaid' or 'Cytoscape'
 
 
 _state = ViewerState()
@@ -134,6 +139,39 @@ def _on_node_selected(node_id: Optional[str]) -> None:
     _render_canvas.refresh()
 
 
+def _current_view() -> Optional[Any]:
+    if _state.workspace is None or _state.current_view_key is None:
+        return None
+    for v in _state.workspace.views:
+        if v.key == _state.current_view_key:
+            return v
+    return None
+
+
+def _draw_cytoscape() -> None:
+    """Push the current view's elements into the browser Cytoscape instance."""
+    view = _current_view()
+    if view is None or _state.workspace is None:
+        return
+    elements = to_cytoscape_elements(_state.workspace, view)
+    js = f"""
+    (function() {{
+      if (typeof cytoscape === 'undefined') {{ return; }}
+      var container = document.getElementById('cy-canvas');
+      if (!container) {{ return; }}
+      if (window._cy_instance) {{ window._cy_instance.destroy(); }}
+      window._cy_instance = cytoscape({{
+        container: container,
+        elements: {json.dumps(elements)},
+        style: {json.dumps(DEFAULT_STYLESHEET)},
+        layout: {{ name: 'cose', animate: false, padding: 30 }},
+        wheelSensitivity: 0.2,
+      }});
+    }})();
+    """
+    ui.run_javascript(js)
+
+
 @ui.refreshable
 def _render_canvas() -> None:
     if _state.workspace is None:
@@ -142,14 +180,33 @@ def _render_canvas() -> None:
     if _state.current_view_key is None:
         ui.label("Select a view from the tree").classes("text-lg text-grey-7")
         return
-    if not _state.mermaid_cache:
-        _state.mermaid_cache = MermaidGenerator(_state.workspace).generate_all()
-    diagram = _state.mermaid_cache.get(_state.current_view_key)
-    if diagram is None:
-        ui.label(f"No diagram available for view {_state.current_view_key!r}").classes("text-grey-7")
-        return
-    ui.label(f"View: {_state.current_view_key}").classes("text-subtitle1 q-mb-md")
-    ui.mermaid(diagram).classes("w-full")
+
+    with ui.row().classes("items-center w-full q-mb-md gap-4"):
+        ui.label(f"View: {_state.current_view_key}").classes("text-subtitle1")
+        ui.toggle(
+            ["Mermaid", "Cytoscape"],
+            value=_state.canvas_mode,
+            on_change=_on_canvas_mode_change,
+        ).props("dense")
+
+    if _state.canvas_mode == "Mermaid":
+        if not _state.mermaid_cache:
+            _state.mermaid_cache = MermaidGenerator(_state.workspace).generate_all()
+        diagram = _state.mermaid_cache.get(_state.current_view_key)
+        if diagram is None:
+            ui.label(f"No Mermaid diagram for view {_state.current_view_key!r}").classes("text-grey-7")
+            return
+        ui.mermaid(diagram).classes("w-full")
+    else:
+        ui.html(
+            '<div id="cy-canvas" style="width:100%; height:600px; border:1px solid #ddd; background:#fafafa;"></div>'
+        )
+        ui.timer(0.05, _draw_cytoscape, once=True)
+
+
+def _on_canvas_mode_change(event: Any) -> None:
+    _state.canvas_mode = event.value
+    _render_canvas.refresh()
 
 
 @ui.refreshable
@@ -176,6 +233,7 @@ def _on_load_clicked() -> None:
 
 @ui.page("/")
 def index() -> None:
+    ui.add_head_html(CYTOSCAPE_CDN)
     with ui.header(elevated=True).classes("items-center"):
         ui.label("pystructurizr viewer").classes("text-h6")
 
