@@ -94,14 +94,15 @@ Features:
   Views branch keyed by view key.
 - **Mermaid canvas** — click any view; the existing
   `MermaidGenerator` renders it.
-- **Cytoscape canvas** — toggle to a Cytoscape.js renderer for the same
-  view; nodes are draggable, pan/zoom built in.
+- **G6 canvas** — toggle to an [AntV G6](https://g6.antv.antgroup.com/)
+  renderer for the same view; nodes are draggable, pan/zoom built in,
+  force-directed layout by default with per-kind colour palette.
 - **Save** — persists per-view node positions
   (`View.element_views[i].x/y`) to `workspace.json` next to the loaded
   DSL. The DSL itself is never modified.
 
-The viewer loads Cytoscape from CDN (`unpkg.com/cytoscape@3.30.2`) with a
-pinned Subresource Integrity hash; no build step required.
+The viewer loads G6 from CDN (`unpkg.com/@antv/g6@5.1.1`) with a pinned
+Subresource Integrity hash; no build step required.
 
 > **Security**: the viewer has no authentication and binds to
 > `127.0.0.1` only. Do not expose it on a shared network without putting
