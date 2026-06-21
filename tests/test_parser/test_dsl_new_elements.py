@@ -137,6 +137,46 @@ def test_parse_infrastructure_node() -> None:
     assert aws.infrastructure_nodes[0].technology == "nginx"
 
 
+def test_dsl_container_and_component_parent_id() -> None:
+    dsl = """
+    workspace "W" {
+        model {
+            s = softwareSystem "System" {
+                api = container "API" {
+                    ctrl = component "Controller"
+                }
+            }
+        }
+        views {}
+    }
+    """
+    ws = parse_dsl(dsl)
+    api = ws.software_systems[0].containers[0]
+    assert api.parent_id == ws.software_systems[0].id
+    assert api.components[0].parent_id == api.id
+
+
+def test_dsl_deployment_and_infra_parent_id() -> None:
+    dsl = """
+    workspace "W" {
+        model {
+            deploymentEnvironment "Live" {
+                dn = deploymentNode "AWS" {
+                    lb = infrastructureNode "LB"
+                    ec2 = deploymentNode "EC2"
+                }
+            }
+        }
+        views {}
+    }
+    """
+    ws = parse_dsl(dsl)
+    aws = ws.deployment_nodes[0]
+    assert aws.parent_id == ""
+    assert aws.infrastructure_nodes[0].parent_id == aws.id
+    assert aws.children[0].parent_id == aws.id
+
+
 def test_deployment_node_find_element() -> None:
     dsl = """
     workspace "W" {

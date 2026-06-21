@@ -60,6 +60,7 @@ def _perspectives(raw: list[dict[str, Any]] | None) -> list[Perspective]:
             description=p.get("description", ""),
             value=p.get("value", ""),
             url=p.get("url", ""),
+            title=p.get("title", ""),
         )
         for p in raw
     ]
@@ -88,7 +89,7 @@ def _parse_person(data: dict[str, Any]) -> Person:
     )
 
 
-def _parse_component(data: dict[str, Any]) -> Component:
+def _parse_component(data: dict[str, Any], parent_id: str = "") -> Component:
     return Component(
         id=data["id"],
         name=data.get("name", ""),
@@ -99,13 +100,15 @@ def _parse_component(data: dict[str, Any]) -> Component:
         properties=_properties(data.get("properties")),
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
+        parent_id=parent_id,
     )
 
 
-def _parse_container(data: dict[str, Any]) -> Container:
-    components = [_parse_component(c) for c in data.get("components", [])]
+def _parse_container(data: dict[str, Any], parent_id: str = "") -> Container:
+    container_id = data["id"]
+    components = [_parse_component(c, parent_id=container_id) for c in data.get("components", [])]
     return Container(
-        id=data["id"],
+        id=container_id,
         name=data.get("name", ""),
         description=data.get("description", ""),
         technology=data.get("technology", ""),
@@ -115,14 +118,16 @@ def _parse_container(data: dict[str, Any]) -> Container:
         properties=_properties(data.get("properties")),
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
+        parent_id=parent_id,
     )
 
 
 def _parse_software_system(data: dict[str, Any]) -> SoftwareSystem:
     tag_list = _tags(data.get("tags"))
-    containers = [_parse_container(c) for c in data.get("containers", [])]
+    system_id = data["id"]
+    containers = [_parse_container(c, parent_id=system_id) for c in data.get("containers", [])]
     return SoftwareSystem(
-        id=data["id"],
+        id=system_id,
         name=data.get("name", ""),
         description=data.get("description", ""),
         containers=containers,
@@ -194,7 +199,7 @@ def _parse_container_instance(data: dict[str, Any]) -> ContainerInstance:
     )
 
 
-def _parse_infrastructure_node(data: dict[str, Any]) -> InfrastructureNode:
+def _parse_infrastructure_node(data: dict[str, Any], parent_id: str = "") -> InfrastructureNode:
     return InfrastructureNode(
         id=data["id"],
         name=data.get("name", ""),
@@ -205,12 +210,16 @@ def _parse_infrastructure_node(data: dict[str, Any]) -> InfrastructureNode:
         properties=_properties(data.get("properties")),
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
+        parent_id=parent_id,
     )
 
 
-def _parse_deployment_node(data: dict[str, Any]) -> DeploymentNode:
-    children = [_parse_deployment_node(c) for c in data.get("children", [])]
-    infrastructure_nodes = [_parse_infrastructure_node(n) for n in data.get("infrastructureNodes", [])]
+def _parse_deployment_node(data: dict[str, Any], parent_id: str = "") -> DeploymentNode:
+    node_id = data["id"]
+    children = [_parse_deployment_node(c, parent_id=node_id) for c in data.get("children", [])]
+    infrastructure_nodes = [
+        _parse_infrastructure_node(n, parent_id=node_id) for n in data.get("infrastructureNodes", [])
+    ]
     software_system_instances = [
         _parse_software_system_instance(i) for i in data.get("softwareSystemInstances", [])
     ]
@@ -218,17 +227,18 @@ def _parse_deployment_node(data: dict[str, Any]) -> DeploymentNode:
         _parse_container_instance(i) for i in data.get("containerInstances", [])
     ]
     return DeploymentNode(
-        id=data["id"],
+        id=node_id,
         name=data.get("name", ""),
         description=data.get("description", ""),
         technology=data.get("technology", ""),
-        instances=str(data.get("instances", "1")),
+        instances=int(data.get("instances", 1)),
         environment=data.get("environment", ""),
         tags=_tags(data.get("tags")),
         url=data.get("url", ""),
         properties=_properties(data.get("properties")),
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
+        parent_id=parent_id,
         children=children,
         infrastructure_nodes=infrastructure_nodes,
         software_system_instances=software_system_instances,

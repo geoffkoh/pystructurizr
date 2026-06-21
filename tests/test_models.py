@@ -90,6 +90,12 @@ def test_perspective_defaults() -> None:
     assert p.description == ""
     assert p.value == ""
     assert p.url == ""
+    assert p.title == ""
+
+
+def test_perspective_with_title() -> None:
+    p = Perspective(name="Security", title="Security View")
+    assert p.title == "Security View"
 
 
 def test_enterprise_name() -> None:
@@ -107,7 +113,8 @@ def test_http_health_check_defaults() -> None:
 def test_automatic_layout_defaults() -> None:
     al = AutomaticLayout()
     assert al.rank_direction == RankDirection.TOP_BOTTOM
-    assert al.rank_separation == 300
+    assert al.rank_separation == 100
+    assert al.node_separation == 100
     assert al.vertices is False
 
 
@@ -231,7 +238,7 @@ def test_container_instance_defaults() -> None:
 def test_deployment_node_defaults() -> None:
     dn = DeploymentNode(id="dn1", name="AWS")
     assert dn.technology == ""
-    assert dn.instances == "1"
+    assert dn.instances == 1
     assert dn.environment == ""
     assert dn.children == []
     assert dn.infrastructure_nodes == []
@@ -244,6 +251,24 @@ def test_deployment_node_nesting() -> None:
     parent = DeploymentNode(id="parent", name="AWS", children=[child])
     assert len(parent.children) == 1
     assert parent.children[0].name == "EC2"
+
+
+def test_parent_id_defaults_empty() -> None:
+    assert Container(id="c1", name="API").parent_id == ""
+    assert Component(id="cmp1", name="X").parent_id == ""
+    assert DeploymentNode(id="dn1", name="AWS").parent_id == ""
+    assert InfrastructureNode(id="i1", name="LB").parent_id == ""
+
+
+def test_parent_id_can_be_set() -> None:
+    c = Container(id="c1", name="API", parent_id="sys1")
+    assert c.parent_id == "sys1"
+    cmp = Component(id="cmp1", name="X", parent_id="c1")
+    assert cmp.parent_id == "c1"
+    dn = DeploymentNode(id="dn2", name="EC2", parent_id="dn1")
+    assert dn.parent_id == "dn1"
+    infra = InfrastructureNode(id="i1", name="LB", parent_id="dn1")
+    assert infra.parent_id == "dn1"
 
 
 # ---------------------------------------------------------------------------
