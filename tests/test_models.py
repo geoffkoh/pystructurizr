@@ -34,6 +34,8 @@ from pystructurizr.models import (
     SoftwareSystemInstance,
     Styles,
     Terminology,
+    Branding,
+    Documentation,
     Vertex,
     View,
     ViewElement,
@@ -531,3 +533,75 @@ def test_workspace_configuration_setter_writes_to_view_set() -> None:
     new_cfg = Configuration(default_view="ctx")
     ws.configuration = new_cfg
     assert ws.views.configuration is new_cfg
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — complete features
+# ---------------------------------------------------------------------------
+
+
+def test_custom_element_icon_default_and_set() -> None:
+    assert CustomElement(id="ce1", name="Box").icon == ""
+    ce = CustomElement(id="ce1", name="Box", icon="logo.svg")
+    assert ce.icon == "logo.svg"
+
+
+def test_branding_defaults() -> None:
+    b = Branding()
+    assert b.color == ""
+    assert b.font == ""
+    assert b.logo == ""
+
+
+def test_configuration_branding_and_exporters() -> None:
+    cfg = Configuration()
+    assert cfg.branding is None
+    assert cfg.generators_and_exporters == {}
+    cfg = Configuration(
+        branding=Branding(color="#fff", logo="https://x/logo.png"),
+        generators_and_exporters={"plantuml": "exporter.PlantUMLExporter"},
+    )
+    assert cfg.branding is not None
+    assert cfg.branding.color == "#fff"
+    assert cfg.generators_and_exporters["plantuml"] == "exporter.PlantUMLExporter"
+
+
+def test_documentation_defaults() -> None:
+    d = Documentation()
+    assert d.content == ""
+    assert d.format == "Markdown"
+
+
+def test_workspace_documentation_and_decisions() -> None:
+    ws = Workspace(name="W")
+    assert ws.documentation == []
+    assert ws.decisions == []
+    ws = Workspace(
+        name="W",
+        documentation=[Documentation(content="# Overview")],
+        decisions=["ADR-001", "ADR-002"],
+    )
+    assert ws.documentation[0].content == "# Overview"
+    assert ws.decisions == ["ADR-001", "ADR-002"]
+
+
+def test_workspace_validate_clean() -> None:
+    ws = Workspace(name="W")
+    ws.views.append(View(type=ViewType.SYSTEM_CONTEXT, key="ctx"))
+    ws.views.append(View(type=ViewType.CONTAINER, key="cont"))
+    assert ws.validate() == []
+
+
+def test_workspace_validate_duplicate_view_keys() -> None:
+    ws = Workspace(name="W")
+    ws.views.append(View(type=ViewType.SYSTEM_CONTEXT, key="dup"))
+    ws.views.append(View(type=ViewType.CONTAINER, key="dup"))
+    issues = ws.validate()
+    assert any("dup" in issue for issue in issues)
+
+
+def test_workspace_validate_empty_view_key() -> None:
+    ws = Workspace(name="W")
+    ws.views.append(View(type=ViewType.SYSTEM_CONTEXT, key=""))
+    issues = ws.validate()
+    assert any("empty key" in issue for issue in issues)

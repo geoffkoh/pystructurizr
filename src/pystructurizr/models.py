@@ -314,6 +314,7 @@ class CustomElement:
     properties: dict[str, str] = field(default_factory=dict)
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
+    icon: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +527,23 @@ class Terminology:
 
 
 @dataclass
+class Branding:
+    """Custom branding configuration: brand color, font, and logo URL."""
+
+    color: str = ""
+    font: str = ""
+    logo: str = ""
+
+
+@dataclass
+class Documentation:
+    """Long-form documentation attached to a workspace."""
+
+    content: str = ""
+    format: str = "Markdown"
+
+
+@dataclass
 class Configuration:
     """Workspace view configuration: styles, themes, and terminology."""
 
@@ -535,6 +553,8 @@ class Configuration:
     default_view: str = ""
     view_sort_order: Optional[ViewSortOrder] = None
     properties: dict[str, str] = field(default_factory=dict)
+    branding: Optional[Branding] = None
+    generators_and_exporters: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -682,6 +702,8 @@ class Workspace:
     last_modified_by: str = ""
     created_date: str = ""
     created_by: str = ""
+    documentation: list[Documentation] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)
 
     @property
     def people(self) -> list[Person]:
@@ -735,6 +757,25 @@ class Workspace:
 
     def all_relationships_for(self, ids: set[str]) -> list[Relationship]:
         return self.model.all_relationships_for(ids)
+
+    def validate(self) -> list[str]:
+        """Return a list of validation issues; empty list means the workspace is well-formed.
+
+        Checks:
+        - View keys must be non-empty.
+        - View keys must be unique across the workspace.
+        """
+        issues: list[str] = []
+        seen: dict[str, int] = {}
+        for view in self.views:
+            if not view.key:
+                issues.append(f"View of type {view.type.value} has an empty key.")
+                continue
+            seen[view.key] = seen.get(view.key, 0) + 1
+        for key, count in seen.items():
+            if count > 1:
+                issues.append(f"Duplicate view key {key!r} appears {count} times.")
+        return issues
 
 
 def _find_in_deployment_node(
