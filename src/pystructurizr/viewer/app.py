@@ -20,18 +20,14 @@ from nicegui import ui
 from pystructurizr.generators.mermaid import MermaidGenerator
 from pystructurizr.models import DeploymentNode, View, Workspace
 from pystructurizr.parser.dsl import ParseError, parse_dsl_file
-from pystructurizr.viewer.cytoscape_view import (
-    DEFAULT_STYLESHEET,
-    apply_positions,
-    to_cytoscape_elements,
-)
+from pystructurizr.viewer.g6_view import KIND_COLOURS, apply_positions, to_g6_data
 
 
 TreeNode = dict[str, Any]
 
-CYTOSCAPE_CDN = (
-    '<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"'
-    ' integrity="sha384-IWROdLKRsN1UuJywMlWl7/blXQ8GEooN2n7dzTxfEPd7ybYIKCUJ2Ol/1Gpf3YV4"'
+G6_CDN = (
+    '<script src="https://unpkg.com/@antv/g6@5.1.1/dist/g6.min.js"'
+    ' integrity="sha384-UD8c5szelcdeclSWhUiFuz1tiZeIweaJygrWmWcSllSAfocHUyRyQZ5iiQ0J1MGm"'
     ' crossorigin="anonymous"></script>'
 )
 
@@ -44,7 +40,7 @@ class ViewerState:
     folder_path: str = ""
     current_view_key: Optional[str] = None
     mermaid_cache: dict[str, str] = field(default_factory=dict)
-    canvas_mode: str = "Mermaid"  # 'Mermaid' or 'Cytoscape'
+    canvas_mode: str = "Mermaid"  # 'Mermaid' or 'G6'
 
 
 _state = ViewerState()
@@ -162,37 +158,75 @@ def _workspace_json_path() -> Optional[Path]:
     return Path(_state.folder_path).expanduser() / "workspace.json"
 
 
-def _draw_cytoscape() -> None:
-    """Push the current view's elements into the browser Cytoscape instance.
+def _draw_g6() -> None:
+    """Push the current view's data into the browser G6 instance.
 
-    Honors any pre-positioned nodes (preset layout) and resets the
-    in-browser cyPositions buffer so subsequent drags accumulate fresh.
+    Honors any pre-positioned nodes (preset layout via per-node style.x/y)
+    and resets the in-browser cyPositions buffer so subsequent drags
+    accumulate fresh.
     """
     view = _current_view()
     if view is None or _state.workspace is None:
         return
-    elements = to_cytoscape_elements(_state.workspace, view)
-    has_preset = any("position" in el for el in elements)
-    layout = "{ name: 'preset' }" if has_preset else "{ name: 'cose', animate: false, padding: 30 }"
+    data = to_g6_data(_state.workspace, view)
+    has_preset = any("style" in node and "x" in node["style"] for node in data["nodes"])
+    layout = "null" if has_preset else "{ type: 'force', animation: false, preventOverlap: true, nodeSize: 80 }"
     js = f"""
     (function() {{
-      if (typeof cytoscape === 'undefined') {{ return; }}
+      if (typeof G6 === 'undefined') {{ return; }}
       var container = document.getElementById('cy-canvas');
       if (!container) {{ return; }}
-      if (window._cy_instance) {{ window._cy_instance.destroy(); }}
+      if (window._g6_instance) {{ window._g6_instance.destroy(); }}
       window.cyPositions = {{}};
-      window._cy_instance = cytoscape({{
+      var KIND_COLOURS = {json.dumps(KIND_COLOURS)};
+      window._g6_instance = new G6.Graph({{
         container: container,
-        elements: {json.dumps(elements)},
-        style: {json.dumps(DEFAULT_STYLESHEET)},
+        width: container.clientWidth || 800,
+        height: container.clientHeight || 600,
+        data: {json.dumps(data)},
         layout: {layout},
-        wheelSensitivity: 0.2,
+        node: {{
+          type: 'rect',
+          style: {{
+            size: [160, 60],
+            radius: 6,
+            fill: function(d) {{ return KIND_COLOURS[d.data && d.data.kind] || '#1976d2'; }},
+            stroke: '#1a3a5c',
+            lineWidth: 1,
+            labelText: function(d) {{ return (d.data && d.data.label) || d.id; }},
+            labelFill: '#fff',
+            labelFontSize: 11,
+            labelWordWrap: true,
+            labelMaxWidth: 140,
+            labelMaxLines: 3,
+            cursor: 'grab',
+          }},
+        }},
+        edge: {{
+          type: 'line',
+          style: {{
+            stroke: '#90a4ae',
+            lineWidth: 1.5,
+            endArrow: true,
+            labelText: function(d) {{ return (d.data && d.data.label) || ''; }},
+            labelFontSize: 10,
+            labelFill: '#555',
+            labelBackground: true,
+            labelBackgroundFill: '#fff',
+            labelBackgroundOpacity: 0.85,
+          }},
+        }},
+        behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
       }});
-      window._cy_instance.on('dragfree', 'node', function(evt) {{
-        var n = evt.target;
-        window.cyPositions[n.id()] = {{
-          x: Math.round(n.position('x')),
-          y: Math.round(n.position('y')),
+      window._g6_instance.render();
+      window._g6_instance.on('node:dragend', function(evt) {{
+        var id = evt.target && evt.target.id;
+        if (!id) {{ return; }}
+        var nd = window._g6_instance.getNodeData(id);
+        if (!nd || !nd.style) {{ return; }}
+        window.cyPositions[id] = {{
+          x: Math.round(nd.style.x),
+          y: Math.round(nd.style.y),
         }};
       }});
     }})();
@@ -219,7 +253,7 @@ async def _on_save_clicked() -> None:
         ui.notify("Workspace folder unknown — reload first.", type="warning")
         return
     view = _current_view()
-    if view is not None and _state.canvas_mode == "Cytoscape":
+    if view is not None and _state.canvas_mode == "G6":
         try:
             raw = await ui.run_javascript("return window.cyPositions || {};", timeout=3.0)
         except TimeoutError:
@@ -252,7 +286,7 @@ def _render_canvas() -> None:
     with ui.row().classes("items-center w-full q-mb-md gap-4"):
         ui.label(f"View: {_state.current_view_key}").classes("text-subtitle1")
         ui.toggle(
-            ["Mermaid", "Cytoscape"],
+            ["Mermaid", "G6"],
             value=_state.canvas_mode,
             on_change=_on_canvas_mode_change,
         ).props("dense")
@@ -271,7 +305,7 @@ def _render_canvas() -> None:
         ui.html(
             '<div id="cy-canvas" style="width:100%; height:600px; border:1px solid #ddd; background:#fafafa;"></div>'
         )
-        ui.timer(0.05, _draw_cytoscape, once=True)
+        ui.timer(0.05, _draw_g6, once=True)
 
 
 def _on_canvas_mode_change(event: Any) -> None:
@@ -303,7 +337,7 @@ def _on_load_clicked() -> None:
 
 @ui.page("/")
 def index() -> None:
-    ui.add_head_html(CYTOSCAPE_CDN)
+    ui.add_head_html(G6_CDN)
     with ui.header(elevated=True).classes("items-center"):
         ui.label("pystructurizr viewer").classes("text-h6")
 

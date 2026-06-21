@@ -1,12 +1,10 @@
-"""Translate a pystructurizr View into Cytoscape.js elements."""
+"""Translate a pystructurizr View into AntV G6 graph data."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from pystructurizr.models import (
-    Component,
-    Container,
     Location,
     Person,
     SoftwareSystem,
@@ -17,7 +15,21 @@ from pystructurizr.models import (
 )
 
 
-CytoscapeElement = dict[str, Any]
+G6Node = dict[str, Any]
+G6Edge = dict[str, Any]
+G6Data = dict[str, list[Any]]
+
+
+# Element-kind palette. Kept in Python so the JS bridge stays a thin shell
+# and so tests can assert against it.
+KIND_COLOURS: dict[str, str] = {
+    "person": "#0d47a1",
+    "person-external": "#546e7a",
+    "system": "#1976d2",
+    "system-external": "#90a4ae",
+    "container": "#43a047",
+    "component": "#fb8c00",
+}
 
 
 def _person_kind(p: Person) -> str:
@@ -29,7 +41,7 @@ def _system_kind(s: SoftwareSystem) -> str:
 
 
 def _visible_ids(workspace: Workspace, view: View) -> set[str]:
-    """Mirror MermaidGenerator._visible_ids so the two canvases stay in sync."""
+    """Mirror MermaidGenerator._visible_ids so renderers stay in sync."""
     if view.include_all:
         ids: set[str] = set()
         ids.update(p.id for p in workspace.people)
@@ -62,15 +74,24 @@ def _visible_ids(workspace: Workspace, view: View) -> set[str]:
     return ids
 
 
-def _node(eid: str, label: str, kind: str, x: int | None = None, y: int | None = None) -> CytoscapeElement:
-    data: CytoscapeElement = {"data": {"id": eid, "label": label, "kind": kind}}
+def _node(eid: str, label: str, kind: str, x: int | None = None, y: int | None = None) -> G6Node:
+    """Build a G6 node descriptor.
+
+    G6 v5 places nodes via ``style.x`` and ``style.y``. When positions
+    are absent the layout engine (force-directed) will lay the node out
+    on render.
+    """
+    node: G6Node = {
+        "id": eid,
+        "data": {"label": label, "kind": kind},
+    }
     if x is not None and y is not None:
-        data["position"] = {"x": x, "y": y}
-    return data
+        node["style"] = {"x": x, "y": y}
+    return node
 
 
-def to_cytoscape_elements(workspace: Workspace, view: View) -> list[CytoscapeElement]:
-    """Return a Cytoscape elements list (nodes + edges) for the given view.
+def to_g6_data(workspace: Workspace, view: View) -> G6Data:
+    """Return G6 graph data ``{nodes, edges}`` for the given view.
 
     Uses stored ViewElement positions when available so previously
     persisted layouts survive a re-render.
@@ -86,7 +107,7 @@ def to_cytoscape_elements(workspace: Workspace, view: View) -> list[CytoscapeEle
         xy = positions.get(eid)
         return xy if xy is not None else (None, None)
 
-    nodes: list[CytoscapeElement] = []
+    nodes: list[G6Node] = []
 
     for p in workspace.people:
         if p.id in visible:
@@ -106,18 +127,16 @@ def to_cytoscape_elements(workspace: Workspace, view: View) -> list[CytoscapeEle
                     x, y = pos(comp.id)
                     nodes.append(_node(comp.id, comp.name, "component", x, y))
 
-    edges: list[CytoscapeElement] = []
+    edges: list[G6Edge] = []
     for rel in workspace.all_relationships_for(visible):
         edges.append({
-            "data": {
-                "id": rel.id or f"{rel.source_id}__{rel.destination_id}",
-                "source": rel.source_id,
-                "target": rel.destination_id,
-                "label": rel.description,
-            }
+            "id": rel.id or f"{rel.source_id}__{rel.destination_id}",
+            "source": rel.source_id,
+            "target": rel.destination_id,
+            "data": {"label": rel.description},
         })
 
-    return nodes + edges
+    return {"nodes": nodes, "edges": edges}
 
 
 def apply_positions(view: View, positions: dict[str, tuple[int, int]]) -> None:
@@ -134,48 +153,3 @@ def apply_positions(view: View, positions: dict[str, tuple[int, int]]) -> None:
         else:
             ve.x = x
             ve.y = y
-
-
-# Cytoscape stylesheet expressed as plain dicts — serialized to JS as-is.
-DEFAULT_STYLESHEET: list[CytoscapeElement] = [
-    {
-        "selector": "node",
-        "style": {
-            "label": "data(label)",
-            "text-valign": "center",
-            "text-halign": "center",
-            "text-wrap": "wrap",
-            "text-max-width": "120px",
-            "font-size": "11px",
-            "color": "#fff",
-            "background-color": "#1976d2",
-            "shape": "round-rectangle",
-            "width": "140px",
-            "height": "70px",
-            "border-width": 1,
-            "border-color": "#0d47a1",
-        },
-    },
-    {"selector": "node[kind = 'person']", "style": {"background-color": "#0d47a1", "shape": "round-rectangle"}},
-    {"selector": "node[kind = 'person-external']", "style": {"background-color": "#546e7a"}},
-    {"selector": "node[kind = 'system']", "style": {"background-color": "#1976d2"}},
-    {"selector": "node[kind = 'system-external']", "style": {"background-color": "#90a4ae"}},
-    {"selector": "node[kind = 'container']", "style": {"background-color": "#43a047"}},
-    {"selector": "node[kind = 'component']", "style": {"background-color": "#fb8c00"}},
-    {
-        "selector": "edge",
-        "style": {
-            "label": "data(label)",
-            "font-size": "10px",
-            "color": "#555",
-            "text-background-color": "#fff",
-            "text-background-opacity": 0.85,
-            "text-background-padding": "2px",
-            "curve-style": "bezier",
-            "target-arrow-shape": "triangle",
-            "line-color": "#90a4ae",
-            "target-arrow-color": "#90a4ae",
-            "width": 1.5,
-        },
-    },
-]

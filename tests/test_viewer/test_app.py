@@ -9,7 +9,7 @@ from nicegui import ui
 from nicegui.testing import User
 
 from pystructurizr.viewer.app import _build_tree_nodes, _load_workspace
-from pystructurizr.viewer.cytoscape_view import apply_positions, to_cytoscape_elements
+from pystructurizr.viewer.g6_view import apply_positions, to_g6_data
 
 
 FIXTURE_DIR = Path(__file__).parent.parent / "fixtures"
@@ -66,8 +66,12 @@ def test_apply_positions_round_trip(tmp_path: Path) -> None:
     view = ws.views[0]
     apply_positions(view, {"customer": (100, 200), "bank": (300, 400)})
     assert len(view.element_views) == 2
-    elements = to_cytoscape_elements(ws, view)
-    positioned = {e["data"]["id"]: e["position"] for e in elements if "position" in e}
+    data = to_g6_data(ws, view)
+    positioned = {
+        node["id"]: node["style"]
+        for node in data["nodes"]
+        if "style" in node and "x" in node["style"]
+    }
     assert positioned["customer"] == {"x": 100, "y": 200}
     assert positioned["bank"] == {"x": 300, "y": 400}
 
