@@ -35,6 +35,7 @@ from pystructurizr.models import (
     Terminology,
     Vertex,
     View,
+    ViewElement,
     ViewSortOrder,
     ViewType,
     Workspace,
@@ -308,9 +309,15 @@ def test_styles_empty() -> None:
 
 def test_terminology_defaults() -> None:
     t = Terminology()
-    assert t.person == ""
-    assert t.software_system == ""
-    assert t.deployment_node == ""
+    assert t.enterprise == "Enterprise"
+    assert t.person == "Person"
+    assert t.software_system == "Software System"
+    assert t.container == "Container"
+    assert t.component == "Component"
+    assert t.code == "Code"
+    assert t.deployment_node == "Deployment Node"
+    assert t.infrastructure_node == "Infrastructure Node"
+    assert t.relationship == "Relationship"
 
 
 def test_configuration_defaults() -> None:
@@ -331,6 +338,84 @@ def test_workspace_new_fields() -> None:
     assert ws.deployment_environments == []
     assert ws.enterprise is None
     assert isinstance(ws.configuration, Configuration)
+
+
+def test_workspace_metadata_defaults() -> None:
+    ws = Workspace(name="Test")
+    assert ws.id == ""
+    assert ws.version == 1
+    assert ws.revision == 1
+    assert ws.last_modified_date == ""
+    assert ws.last_modified_by == ""
+    assert ws.created_date == ""
+    assert ws.created_by == ""
+
+
+def test_workspace_metadata_set() -> None:
+    ws = Workspace(
+        name="Test",
+        id="42",
+        version=7,
+        revision=3,
+        last_modified_date="2026-06-21T10:00:00Z",
+        last_modified_by="alice",
+        created_date="2026-01-01T00:00:00Z",
+        created_by="bob",
+    )
+    assert ws.id == "42"
+    assert ws.version == 7
+    assert ws.last_modified_by == "alice"
+    assert ws.created_by == "bob"
+
+
+def test_view_element_customization_fields() -> None:
+    ve = ViewElement(id="e1", title="Custom", description="d", width=120, height=80)
+    assert ve.title == "Custom"
+    assert ve.description == "d"
+    assert ve.width == 120
+    assert ve.height == 80
+
+
+def test_relationship_view_link_fields() -> None:
+    rv = RelationshipView(id="r1", title="Calls", link=True, link_element=2)
+    assert rv.title == "Calls"
+    assert rv.link is True
+    assert rv.link_element == 2
+
+
+def test_view_control_flag_defaults() -> None:
+    v = View(type=ViewType.SYSTEM_CONTEXT, key="k")
+    assert v.owner == ""
+    assert v.disable_automatic_layout is False
+    assert v.hide_element_metadata is False
+    assert v.hide_relationship_metadata is False
+
+
+def test_view_control_flags_set() -> None:
+    v = View(
+        type=ViewType.SYSTEM_CONTEXT,
+        key="k",
+        owner="alice",
+        disable_automatic_layout=True,
+        hide_element_metadata=True,
+        hide_relationship_metadata=True,
+    )
+    assert v.owner == "alice"
+    assert v.disable_automatic_layout is True
+    assert v.hide_element_metadata is True
+    assert v.hide_relationship_metadata is True
+
+
+def test_deployment_and_infra_icon_default_empty() -> None:
+    assert DeploymentNode(id="dn1", name="AWS").icon == ""
+    assert InfrastructureNode(id="lb1", name="LB").icon == ""
+
+
+def test_deployment_and_infra_icon_set() -> None:
+    dn = DeploymentNode(id="dn1", name="AWS", icon="aws-logo.png")
+    infra = InfrastructureNode(id="lb1", name="LB", icon="nginx.svg")
+    assert dn.icon == "aws-logo.png"
+    assert infra.icon == "nginx.svg"
 
 
 def test_workspace_find_element_in_deployment_node() -> None:
