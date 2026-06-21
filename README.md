@@ -75,3 +75,37 @@ diagrams = gen.generate_all()
 for view_name, mermaid_code in diagrams.items():
     print(f"{view_name}:\n{mermaid_code}\n")
 ```
+
+## Interactive Viewer
+
+A NiceGUI-based viewer is included for exploring a workspace and laying
+out views interactively.
+
+```bash
+uv run python -m pystructurizr.viewer.app
+# → http://localhost:8765
+```
+
+Features:
+
+- **Folder input** — point at a directory containing `workspace.dsl`.
+- **Hierarchical tree** — People, Software Systems → Containers →
+  Components, Deployment Nodes (recursive) → Infra/Instances, plus a
+  Views branch keyed by view key.
+- **Mermaid canvas** — click any view; the existing
+  `MermaidGenerator` renders it.
+- **Cytoscape canvas** — toggle to a Cytoscape.js renderer for the same
+  view; nodes are draggable, pan/zoom built in.
+- **Save** — persists per-view node positions
+  (`View.element_views[i].x/y`) to `workspace.json` next to the loaded
+  DSL. The DSL itself is never modified.
+
+The viewer loads Cytoscape from CDN (`unpkg.com/cytoscape@3`); no build
+step required.
+
+### Tests
+
+```bash
+uv run pytest                      # full suite
+uv run pytest tests/test_viewer    # viewer-only smoke tests
+```
