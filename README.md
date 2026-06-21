@@ -100,8 +100,12 @@ Features:
   (`View.element_views[i].x/y`) to `workspace.json` next to the loaded
   DSL. The DSL itself is never modified.
 
-The viewer loads Cytoscape from CDN (`unpkg.com/cytoscape@3`); no build
-step required.
+The viewer loads Cytoscape from CDN (`unpkg.com/cytoscape@3.30.2`) with a
+pinned Subresource Integrity hash; no build step required.
+
+> **Security**: the viewer has no authentication and binds to
+> `127.0.0.1` only. Do not expose it on a shared network without putting
+> it behind a reverse proxy with auth.
 
 ### Tests
 
