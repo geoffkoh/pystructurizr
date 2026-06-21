@@ -10,12 +10,13 @@ This module exposes `main()`. Run with `uv run python -m pystructurizr.viewer.ap
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from nicegui import ui
 
+from pystructurizr.generators.mermaid import MermaidGenerator
 from pystructurizr.models import DeploymentNode, Workspace
 from pystructurizr.parser.dsl import ParseError, parse_dsl_file
 
@@ -29,6 +30,8 @@ class ViewerState:
 
     workspace: Optional[Workspace] = None
     folder_path: str = ""
+    current_view_key: Optional[str] = None
+    mermaid_cache: dict[str, str] = field(default_factory=dict)
 
 
 _state = ViewerState()
@@ -125,11 +128,28 @@ def _build_tree_nodes(ws: Workspace) -> list[TreeNode]:
 
 
 def _on_node_selected(node_id: Optional[str]) -> None:
-    """Dispatch tree node clicks. View rendering is wired in M4."""
-    if not node_id:
+    if not node_id or not node_id.startswith("view:"):
         return
-    if node_id.startswith("view:"):
-        ui.notify(f"Selected view {node_id[5:]} (rendering in M4)", type="info")
+    _state.current_view_key = node_id[len("view:"):]
+    _render_canvas.refresh()
+
+
+@ui.refreshable
+def _render_canvas() -> None:
+    if _state.workspace is None:
+        ui.label("Load a workspace to begin").classes("text-lg text-grey-7")
+        return
+    if _state.current_view_key is None:
+        ui.label("Select a view from the tree").classes("text-lg text-grey-7")
+        return
+    if not _state.mermaid_cache:
+        _state.mermaid_cache = MermaidGenerator(_state.workspace).generate_all()
+    diagram = _state.mermaid_cache.get(_state.current_view_key)
+    if diagram is None:
+        ui.label(f"No diagram available for view {_state.current_view_key!r}").classes("text-grey-7")
+        return
+    ui.label(f"View: {_state.current_view_key}").classes("text-subtitle1 q-mb-md")
+    ui.mermaid(diagram).classes("w-full")
 
 
 @ui.refreshable
@@ -147,8 +167,11 @@ def _on_load_clicked() -> None:
         ui.notify(message, type="negative")
         return
     _state.workspace = workspace
+    _state.current_view_key = None
+    _state.mermaid_cache = {}
     ui.notify(message, type="positive")
     _render_tree.refresh()
+    _render_canvas.refresh()
 
 
 @ui.page("/")
@@ -168,8 +191,8 @@ def index() -> None:
                 ui.separator()
                 _render_tree()
         with splitter.after:
-            with ui.column().classes("p-8 w-full items-center justify-center"):
-                ui.label("Load a workspace to begin").classes("text-lg text-grey-7")
+            with ui.column().classes("p-6 w-full"):
+                _render_canvas()
 
 
 def main() -> None:
