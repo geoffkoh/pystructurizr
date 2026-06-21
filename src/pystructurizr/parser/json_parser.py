@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from pystructurizr.models import (
     Animation,
     AutomaticLayout,
+    Branding,
     Component,
     Configuration,
     Container,
     ContainerInstance,
     DeploymentNode,
+    Documentation,
     ElementStyle,
     HttpHealthCheck,
     InfrastructureNode,
@@ -351,6 +353,16 @@ def _parse_relationship_style(data: dict[str, Any]) -> RelationshipStyle:
     )
 
 
+def _parse_branding(data: dict[str, Any] | None) -> Optional[Branding]:
+    if not data:
+        return None
+    return Branding(
+        color=data.get("color", ""),
+        font=data.get("font", ""),
+        logo=data.get("logo", ""),
+    )
+
+
 def _parse_configuration(data: dict[str, Any] | None) -> Configuration:
     if not data:
         return Configuration()
@@ -358,16 +370,17 @@ def _parse_configuration(data: dict[str, Any] | None) -> Configuration:
     element_styles = [_parse_element_style(s) for s in styles_data.get("elements", [])]
     relationship_styles = [_parse_relationship_style(s) for s in styles_data.get("relationships", [])]
     terminology_data = data.get("terminology", {})
+    default_terminology = Terminology()
     terminology = Terminology(
-        enterprise=terminology_data.get("enterprise", ""),
-        person=terminology_data.get("person", ""),
-        software_system=terminology_data.get("softwareSystem", ""),
-        container=terminology_data.get("container", ""),
-        component=terminology_data.get("component", ""),
-        code=terminology_data.get("code", ""),
-        deployment_node=terminology_data.get("deploymentNode", ""),
-        infrastructure_node=terminology_data.get("infrastructureNode", ""),
-        relationship=terminology_data.get("relationship", ""),
+        enterprise=terminology_data.get("enterprise", default_terminology.enterprise),
+        person=terminology_data.get("person", default_terminology.person),
+        software_system=terminology_data.get("softwareSystem", default_terminology.software_system),
+        container=terminology_data.get("container", default_terminology.container),
+        component=terminology_data.get("component", default_terminology.component),
+        code=terminology_data.get("code", default_terminology.code),
+        deployment_node=terminology_data.get("deploymentNode", default_terminology.deployment_node),
+        infrastructure_node=terminology_data.get("infrastructureNode", default_terminology.infrastructure_node),
+        relationship=terminology_data.get("relationship", default_terminology.relationship),
     )
     return Configuration(
         styles=Styles(element_styles=element_styles, relationship_styles=relationship_styles),
@@ -375,7 +388,22 @@ def _parse_configuration(data: dict[str, Any] | None) -> Configuration:
         terminology=terminology,
         default_view=data.get("defaultView", ""),
         properties=_properties(data.get("properties")),
+        branding=_parse_branding(data.get("branding")),
+        generators_and_exporters=_properties(data.get("generatorsAndExporters")),
     )
+
+
+def _parse_documentation(data: dict[str, Any] | None) -> list[Documentation]:
+    if not data:
+        return []
+    sections = data.get("sections", [])
+    return [
+        Documentation(
+            content=s.get("content", ""),
+            format=s.get("format", "Markdown"),
+        )
+        for s in sections
+    ]
 
 
 def parse_json(source: str) -> Workspace:
@@ -437,6 +465,9 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         deployment_environments=deployment_environments,
     )
 
+    decisions_raw = ws_data.get("decisions", [])
+    decisions = [str(d) for d in decisions_raw] if isinstance(decisions_raw, list) else []
+
     return Workspace(
         name=ws_data.get("name", ""),
         description=ws_data.get("description", ""),
@@ -449,4 +480,6 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         last_modified_by=ws_data.get("lastModifiedUser", ws_data.get("lastModifiedBy", "")),
         created_date=ws_data.get("createdDate", ""),
         created_by=ws_data.get("createdUser", ws_data.get("createdBy", "")),
+        documentation=_parse_documentation(ws_data.get("documentation")),
+        decisions=decisions,
     )

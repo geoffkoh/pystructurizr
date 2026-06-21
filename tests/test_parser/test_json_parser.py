@@ -89,3 +89,60 @@ def test_perspective_title_from_json():
     })
     ws = parse_json(raw)
     assert ws.people[0].perspectives[0].title == "Sec view"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4
+# ---------------------------------------------------------------------------
+
+
+def test_parse_branding_and_exporters_from_json():
+    raw = json.dumps({
+        "workspace": {
+            "name": "W",
+            "model": {},
+            "views": {
+                "configuration": {
+                    "branding": {"color": "#0a0", "font": "Inter", "logo": "https://x/logo.png"},
+                    "generatorsAndExporters": {"plantuml": "PlantUMLExporter"},
+                }
+            },
+        }
+    })
+    ws = parse_json(raw)
+    assert ws.configuration.branding is not None
+    assert ws.configuration.branding.color == "#0a0"
+    assert ws.configuration.branding.font == "Inter"
+    assert ws.configuration.generators_and_exporters["plantuml"] == "PlantUMLExporter"
+
+
+def test_parse_workspace_documentation_and_decisions_from_json():
+    raw = json.dumps({
+        "workspace": {
+            "name": "W",
+            "model": {},
+            "documentation": {"sections": [
+                {"content": "# Overview", "format": "Markdown"},
+                {"content": "Sec details", "format": "AsciiDoc"},
+            ]},
+            "decisions": ["ADR-1", "ADR-2"],
+        }
+    })
+    ws = parse_json(raw)
+    assert len(ws.documentation) == 2
+    assert ws.documentation[0].content == "# Overview"
+    assert ws.documentation[1].format == "AsciiDoc"
+    assert ws.decisions == ["ADR-1", "ADR-2"]
+
+
+def test_terminology_defaults_preserved_when_json_omits_them():
+    raw = json.dumps({
+        "workspace": {
+            "name": "W",
+            "model": {},
+            "views": {"configuration": {"terminology": {}}},
+        }
+    })
+    ws = parse_json(raw)
+    assert ws.configuration.terminology.person == "Person"
+    assert ws.configuration.terminology.software_system == "Software System"
