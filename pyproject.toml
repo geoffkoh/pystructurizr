@@ -25,3 +25,9 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.4.0",
+]
