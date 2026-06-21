@@ -11,11 +11,13 @@ This module exposes `main()`. Run with `uv run python -m pystructurizr.viewer.ap
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from nicegui import ui
 
 from pystructurizr.models import Workspace
+from pystructurizr.parser.dsl import ParseError, parse_dsl_file
 
 
 @dataclass
@@ -29,9 +31,34 @@ class ViewerState:
 _state = ViewerState()
 
 
+def _load_workspace(folder: str) -> tuple[Optional[Workspace], str]:
+    """Resolve workspace.dsl under folder and parse it.
+
+    Returns (workspace, message). On success workspace is set; on failure
+    workspace is None and message describes what went wrong.
+    """
+    folder = folder.strip()
+    if not folder:
+        return None, "Please enter a folder path."
+    dsl_path = Path(folder).expanduser() / "workspace.dsl"
+    if not dsl_path.is_file():
+        return None, f"No workspace.dsl in {dsl_path.parent}"
+    try:
+        workspace = parse_dsl_file(dsl_path)
+    except ParseError as exc:
+        return None, f"DSL parse error: {exc}"
+    except OSError as exc:
+        return None, f"Could not read {dsl_path}: {exc}"
+    return workspace, f"Loaded {workspace.name or '(unnamed workspace)'}"
+
+
 def _on_load_clicked() -> None:
-    """Placeholder until M2 wires up DSL parsing."""
-    ui.notify("Load not wired yet (M2)", type="info")
+    workspace, message = _load_workspace(_state.folder_path)
+    if workspace is None:
+        ui.notify(message, type="negative")
+        return
+    _state.workspace = workspace
+    ui.notify(message, type="positive")
 
 
 @ui.page("/")
