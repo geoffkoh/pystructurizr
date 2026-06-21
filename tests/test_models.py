@@ -20,6 +20,7 @@ from pystructurizr.models import (
     InteractionStyle,
     LineStyle,
     Location,
+    Model,
     PaperSize,
     Perspective,
     Person,
@@ -36,6 +37,7 @@ from pystructurizr.models import (
     Vertex,
     View,
     ViewElement,
+    ViewSet,
     ViewSortOrder,
     ViewType,
     Workspace,
@@ -446,7 +448,7 @@ def test_deployment_and_infra_icon_set() -> None:
 def test_workspace_find_element_in_deployment_node() -> None:
     infra = InfrastructureNode(id="lb1", name="LB")
     dn = DeploymentNode(id="dn1", name="AWS", infrastructure_nodes=[infra])
-    ws = Workspace(name="W", deployment_nodes=[dn])
+    ws = Workspace(name="W", model=Model(deployment_nodes=[dn]))
     assert ws.find_element("dn1") is dn
     assert ws.find_element("lb1") is infra
     assert ws.find_element("missing") is None
@@ -455,11 +457,77 @@ def test_workspace_find_element_in_deployment_node() -> None:
 def test_workspace_find_element_nested_deployment() -> None:
     child = DeploymentNode(id="child", name="EC2")
     parent = DeploymentNode(id="parent", name="AWS", children=[child])
-    ws = Workspace(name="W", deployment_nodes=[parent])
+    ws = Workspace(name="W", model=Model(deployment_nodes=[parent]))
     assert ws.find_element("child") is child
 
 
 def test_workspace_enterprise() -> None:
-    ws = Workspace(name="W", enterprise=Enterprise(name="Acme"))
+    ws = Workspace(name="W", model=Model(enterprise=Enterprise(name="Acme")))
     assert ws.enterprise is not None
     assert ws.enterprise.name == "Acme"
+
+
+# ---------------------------------------------------------------------------
+# Model and ViewSet (Phase 3 structural refactor)
+# ---------------------------------------------------------------------------
+
+
+def test_model_find_element_walks_hierarchy() -> None:
+    comp = Component(id="comp1", name="Ctrl")
+    cont = Container(id="c1", name="API", components=[comp])
+    sys = SoftwareSystem(id="s1", name="Sys", containers=[cont])
+    user = Person(id="u1", name="Alice")
+    m = Model(people=[user], software_systems=[sys])
+    assert m.find_element("u1") is user
+    assert m.find_element("s1") is sys
+    assert m.find_element("c1") is cont
+    assert m.find_element("comp1") is comp
+    assert m.find_element("missing") is None
+
+
+def test_model_all_relationships_for_filters() -> None:
+    r1 = Relationship(source_id="a", destination_id="b")
+    r2 = Relationship(source_id="a", destination_id="c")
+    m = Model(relationships=[r1, r2])
+    assert m.all_relationships_for({"a", "b"}) == [r1]
+
+
+def test_view_set_append_routes_by_type() -> None:
+    vs = ViewSet()
+    ctx = View(type=ViewType.SYSTEM_CONTEXT, key="ctx")
+    cont = View(type=ViewType.CONTAINER, key="cont")
+    deploy = View(type=ViewType.DEPLOYMENT, key="dep")
+    vs.append(ctx)
+    vs.append(cont)
+    vs.append(deploy)
+    assert vs.system_context_views == [ctx]
+    assert vs.container_views == [cont]
+    assert vs.deployment_views == [deploy]
+
+
+def test_view_set_list_protocol() -> None:
+    vs = ViewSet()
+    v1 = View(type=ViewType.SYSTEM_CONTEXT, key="a")
+    v2 = View(type=ViewType.CONTAINER, key="b")
+    vs.append(v1)
+    vs.append(v2)
+    assert len(vs) == 2
+    assert vs[0] is v1
+    assert vs[1] is v2
+    assert [v.key for v in vs] == ["a", "b"]
+
+
+def test_workspace_property_delegates_are_live() -> None:
+    ws = Workspace(name="W")
+    p = Person(id="u1", name="Alice")
+    ws.people.append(p)
+    assert ws.model.people == [p]
+    ws.model.relationships.append(Relationship(source_id="a", destination_id="b"))
+    assert len(ws.relationships) == 1
+
+
+def test_workspace_configuration_setter_writes_to_view_set() -> None:
+    ws = Workspace(name="W")
+    new_cfg = Configuration(default_view="ctx")
+    ws.configuration = new_cfg
+    assert ws.views.configuration is new_cfg

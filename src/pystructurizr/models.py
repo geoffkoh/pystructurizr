@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -334,6 +335,7 @@ class InfrastructureNode:
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
     parent_id: str = ""
+    icon: str = ""
 
 
 @dataclass
@@ -384,6 +386,7 @@ class DeploymentNode:
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
     parent_id: str = ""
+    icon: str = ""
     children: list[DeploymentNode] = field(default_factory=list)
     infrastructure_nodes: list[InfrastructureNode] = field(default_factory=list)
     software_system_instances: list[SoftwareSystemInstance] = field(default_factory=list)
@@ -535,31 +538,20 @@ class Configuration:
 
 
 # ---------------------------------------------------------------------------
-# Workspace
+# Model — static structure container
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class Workspace:
-    """Root container for an entire Structurizr model."""
+class Model:
+    """Static C4 model: all elements and relationships in the workspace."""
 
-    name: str
-    description: str = ""
     people: list[Person] = field(default_factory=list)
     software_systems: list[SoftwareSystem] = field(default_factory=list)
     relationships: list[Relationship] = field(default_factory=list)
-    views: list[View] = field(default_factory=list)
     deployment_nodes: list[DeploymentNode] = field(default_factory=list)
     deployment_environments: list[str] = field(default_factory=list)
     enterprise: Optional[Enterprise] = None
-    configuration: Configuration = field(default_factory=Configuration)
-    id: str = ""
-    version: int = 1
-    revision: int = 1
-    last_modified_date: str = ""
-    last_modified_by: str = ""
-    created_date: str = ""
-    created_by: str = ""
 
     def find_element(
         self, element_id: str
@@ -597,6 +589,152 @@ class Workspace:
         return [
             r for r in self.relationships if r.source_id in ids and r.destination_id in ids
         ]
+
+
+# ---------------------------------------------------------------------------
+# ViewSet — typed view collection with list-protocol back-compat
+# ---------------------------------------------------------------------------
+
+
+_VIEW_TYPE_TO_ATTR: dict[ViewType, str] = {
+    ViewType.SYSTEM_LANDSCAPE: "system_landscape_views",
+    ViewType.SYSTEM_CONTEXT: "system_context_views",
+    ViewType.CONTAINER: "container_views",
+    ViewType.COMPONENT: "component_views",
+    ViewType.DYNAMIC: "dynamic_views",
+    ViewType.DEPLOYMENT: "deployment_views",
+    ViewType.CUSTOM: "custom_views",
+    ViewType.FILTERED: "filtered_views",
+}
+
+
+@dataclass
+class ViewSet:
+    """All views, grouped by type. Supports list-like access for legacy callers."""
+
+    system_landscape_views: list[View] = field(default_factory=list)
+    system_context_views: list[View] = field(default_factory=list)
+    container_views: list[View] = field(default_factory=list)
+    component_views: list[View] = field(default_factory=list)
+    dynamic_views: list[View] = field(default_factory=list)
+    deployment_views: list[View] = field(default_factory=list)
+    custom_views: list[View] = field(default_factory=list)
+    filtered_views: list[View] = field(default_factory=list)
+    configuration: Configuration = field(default_factory=Configuration)
+
+    def get_all_views(self) -> list[View]:
+        """Return every view across all types, in declaration order."""
+        return [
+            *self.system_landscape_views,
+            *self.system_context_views,
+            *self.container_views,
+            *self.component_views,
+            *self.dynamic_views,
+            *self.deployment_views,
+            *self.custom_views,
+            *self.filtered_views,
+        ]
+
+    def append(self, view: View) -> None:
+        """Append a view to the typed list matching its view.type."""
+        attr = _VIEW_TYPE_TO_ATTR.get(view.type)
+        if attr is None:
+            return
+        target: list[View] = getattr(self, attr)
+        target.append(view)
+
+    def __iter__(self) -> Iterator[View]:
+        return iter(self.get_all_views())
+
+    def __len__(self) -> int:
+        return (
+            len(self.system_landscape_views)
+            + len(self.system_context_views)
+            + len(self.container_views)
+            + len(self.component_views)
+            + len(self.dynamic_views)
+            + len(self.deployment_views)
+            + len(self.custom_views)
+            + len(self.filtered_views)
+        )
+
+    def __getitem__(self, index: int) -> View:
+        return self.get_all_views()[index]
+
+
+# ---------------------------------------------------------------------------
+# Workspace
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Workspace:
+    """Root container for an entire Structurizr model."""
+
+    name: str
+    description: str = ""
+    model: Model = field(default_factory=Model)
+    views: ViewSet = field(default_factory=ViewSet)
+    id: str = ""
+    version: int = 1
+    revision: int = 1
+    last_modified_date: str = ""
+    last_modified_by: str = ""
+    created_date: str = ""
+    created_by: str = ""
+
+    @property
+    def people(self) -> list[Person]:
+        return self.model.people
+
+    @property
+    def software_systems(self) -> list[SoftwareSystem]:
+        return self.model.software_systems
+
+    @property
+    def relationships(self) -> list[Relationship]:
+        return self.model.relationships
+
+    @property
+    def deployment_nodes(self) -> list[DeploymentNode]:
+        return self.model.deployment_nodes
+
+    @property
+    def deployment_environments(self) -> list[str]:
+        return self.model.deployment_environments
+
+    @property
+    def enterprise(self) -> Optional[Enterprise]:
+        return self.model.enterprise
+
+    @enterprise.setter
+    def enterprise(self, value: Optional[Enterprise]) -> None:
+        self.model.enterprise = value
+
+    @property
+    def configuration(self) -> Configuration:
+        return self.views.configuration
+
+    @configuration.setter
+    def configuration(self, value: Configuration) -> None:
+        self.views.configuration = value
+
+    def find_element(
+        self, element_id: str
+    ) -> (
+        Person
+        | SoftwareSystem
+        | Container
+        | Component
+        | DeploymentNode
+        | InfrastructureNode
+        | CustomElement
+        | None
+    ):
+        return self.model.find_element(element_id)
+
+    def all_relationships_for(self, ids: set[str]) -> list[Relationship]:
+        return self.model.all_relationships_for(ids)
 
 
 def _find_in_deployment_node(
