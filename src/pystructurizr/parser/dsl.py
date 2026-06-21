@@ -266,7 +266,7 @@ class _Parser:
         elif kw == "container":
             system = self._find_system(ws, parent_id)
             if system is not None:
-                c = Container(id=elem_id, name=name, description=description, technology=technology, tags=tags)
+                c = Container(id=elem_id, name=name, description=description, technology=technology, tags=tags, parent_id=system.id)
                 system.containers.append(c)
                 if alias:
                     self._id_map[alias] = elem_id
@@ -275,15 +275,18 @@ class _Parser:
         elif kw == "component":
             container = self._find_container(ws, parent_id)
             if container is not None:
-                comp = Component(id=elem_id, name=name, description=description, technology=technology, tags=tags)
+                comp = Component(id=elem_id, name=name, description=description, technology=technology, tags=tags, parent_id=container.id)
                 container.components.append(comp)
                 if alias:
                     self._id_map[alias] = elem_id
                 if self._match(LBRACE):
                     self._skip_block()
         elif kw == "deploymentnode":
-            node = DeploymentNode(id=elem_id, name=name, description=description, technology=technology, tags=tags)
             parent_node = self._find_deployment_node(ws, parent_id)
+            node = DeploymentNode(
+                id=elem_id, name=name, description=description, technology=technology, tags=tags,
+                parent_id=parent_node.id if parent_node is not None else "",
+            )
             if parent_node is not None:
                 parent_node.children.append(node)
             else:
@@ -293,8 +296,11 @@ class _Parser:
             if self._match(LBRACE):
                 self._parse_deployment_node_body(ws, node)
         elif kw == "infrastructurenode":
-            infra = InfrastructureNode(id=elem_id, name=name, description=description, technology=technology, tags=tags)
             parent_node = self._find_deployment_node(ws, parent_id)
+            infra = InfrastructureNode(
+                id=elem_id, name=name, description=description, technology=technology, tags=tags,
+                parent_id=parent_node.id if parent_node is not None else "",
+            )
             if parent_node is not None:
                 parent_node.infrastructure_nodes.append(infra)
             if alias:

@@ -160,6 +160,7 @@ class Perspective:
     description: str = ""
     value: str = ""
     url: str = ""
+    title: str = ""
 
 
 @dataclass
@@ -185,8 +186,8 @@ class AutomaticLayout:
     """Automatic layout configuration for a view."""
 
     rank_direction: RankDirection = RankDirection.TOP_BOTTOM
-    rank_separation: int = 300
-    node_separation: int = 300
+    rank_separation: int = 100
+    node_separation: int = 100
     edge_separation: int = 0
     vertices: bool = False
 
@@ -248,6 +249,7 @@ class Component:
     properties: dict[str, str] = field(default_factory=dict)
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
+    parent_id: str = ""
 
 
 @dataclass
@@ -264,6 +266,7 @@ class Container:
     properties: dict[str, str] = field(default_factory=dict)
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
+    parent_id: str = ""
 
 
 @dataclass
@@ -330,7 +333,7 @@ class InfrastructureNode:
     properties: dict[str, str] = field(default_factory=dict)
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
-    icon: str = ""
+    parent_id: str = ""
 
 
 @dataclass
@@ -373,14 +376,14 @@ class DeploymentNode:
     name: str
     description: str = ""
     technology: str = ""
-    instances: str = "1"
+    instances: int = 1
     environment: str = ""
     tags: list[str] = field(default_factory=list)
     url: str = ""
     properties: dict[str, str] = field(default_factory=dict)
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
-    icon: str = ""
+    parent_id: str = ""
     children: list[DeploymentNode] = field(default_factory=list)
     infrastructure_nodes: list[InfrastructureNode] = field(default_factory=list)
     software_system_instances: list[SoftwareSystemInstance] = field(default_factory=list)
