@@ -23,6 +23,7 @@ from pystructurizr.models import (
     HttpHealthCheck,
     InfrastructureNode,
     Location,
+    Model,
     Person,
     Perspective,
     RankDirection,
@@ -34,6 +35,7 @@ from pystructurizr.models import (
     Styles,
     Terminology,
     View,
+    ViewSet,
     ViewType,
     Workspace,
 )
@@ -211,6 +213,7 @@ def _parse_infrastructure_node(data: dict[str, Any], parent_id: str = "") -> Inf
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
         parent_id=parent_id,
+        icon=data.get("icon", ""),
     )
 
 
@@ -239,6 +242,7 @@ def _parse_deployment_node(data: dict[str, Any], parent_id: str = "") -> Deploym
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
         parent_id=parent_id,
+        icon=data.get("icon", ""),
         children=children,
         infrastructure_nodes=infrastructure_nodes,
         software_system_instances=software_system_instances,
@@ -387,22 +391,22 @@ def parse_json_file(path: str | Path) -> Workspace:
 
 def _parse_json_dict(data: dict[str, Any]) -> Workspace:
     ws_data = data.get("workspace", data)
-    model = ws_data.get("model", {})
+    model_data = ws_data.get("model", {})
     views_data = ws_data.get("views", {})
 
-    people = [_parse_person(p) for p in model.get("people", [])]
-    software_systems = [_parse_software_system(s) for s in model.get("softwareSystems", [])]
-    deployment_nodes = [_parse_deployment_node(n) for n in model.get("deploymentNodes", [])]
-    deployment_environments = list(model.get("deploymentEnvironments", []))
+    people = [_parse_person(p) for p in model_data.get("people", [])]
+    software_systems = [_parse_software_system(s) for s in model_data.get("softwareSystems", [])]
+    deployment_nodes = [_parse_deployment_node(n) for n in model_data.get("deploymentNodes", [])]
+    deployment_environments = list(model_data.get("deploymentEnvironments", []))
 
     relationships: list[Relationship] = []
-    for r in model.get("relationships", []):
+    for r in model_data.get("relationships", []):
         relationships.append(_parse_relationship(r))
-    for person in model.get("people", []):
+    for person in model_data.get("people", []):
         for r in person.get("relationships", []):
             r["sourceId"] = person["id"]
             relationships.append(_parse_relationship(r))
-    for system in model.get("softwareSystems", []):
+    for system in model_data.get("softwareSystems", []):
         for r in system.get("relationships", []):
             r["sourceId"] = system["id"]
             relationships.append(_parse_relationship(r))
@@ -415,30 +419,29 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
                     r["sourceId"] = component["id"]
                     relationships.append(_parse_relationship(r))
 
-    views: list[View] = []
-    for v in views_data.get("systemLandscapeViews", []):
-        views.append(_parse_view(v, ViewType.SYSTEM_LANDSCAPE))
-    for v in views_data.get("systemContextViews", []):
-        views.append(_parse_view(v, ViewType.SYSTEM_CONTEXT))
-    for v in views_data.get("containerViews", []):
-        views.append(_parse_view(v, ViewType.CONTAINER))
-    for v in views_data.get("componentViews", []):
-        views.append(_parse_view(v, ViewType.COMPONENT))
-    for v in views_data.get("dynamicViews", []):
-        views.append(_parse_view(v, ViewType.DYNAMIC))
-    for v in views_data.get("deploymentViews", []):
-        views.append(_parse_view(v, ViewType.DEPLOYMENT))
+    view_set = ViewSet(
+        system_landscape_views=[_parse_view(v, ViewType.SYSTEM_LANDSCAPE) for v in views_data.get("systemLandscapeViews", [])],
+        system_context_views=[_parse_view(v, ViewType.SYSTEM_CONTEXT) for v in views_data.get("systemContextViews", [])],
+        container_views=[_parse_view(v, ViewType.CONTAINER) for v in views_data.get("containerViews", [])],
+        component_views=[_parse_view(v, ViewType.COMPONENT) for v in views_data.get("componentViews", [])],
+        dynamic_views=[_parse_view(v, ViewType.DYNAMIC) for v in views_data.get("dynamicViews", [])],
+        deployment_views=[_parse_view(v, ViewType.DEPLOYMENT) for v in views_data.get("deploymentViews", [])],
+        configuration=_parse_configuration(views_data.get("configuration")),
+    )
+
+    workspace_model = Model(
+        people=people,
+        software_systems=software_systems,
+        relationships=relationships,
+        deployment_nodes=deployment_nodes,
+        deployment_environments=deployment_environments,
+    )
 
     return Workspace(
         name=ws_data.get("name", ""),
         description=ws_data.get("description", ""),
-        people=people,
-        software_systems=software_systems,
-        relationships=relationships,
-        views=views,
-        deployment_nodes=deployment_nodes,
-        deployment_environments=deployment_environments,
-        configuration=_parse_configuration(ws_data.get("views", {}).get("configuration")),
+        model=workspace_model,
+        views=view_set,
         id=str(ws_data.get("id", "")),
         version=int(ws_data.get("version", 1)),
         revision=int(ws_data.get("revision", 1)),
