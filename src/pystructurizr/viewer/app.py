@@ -29,7 +29,11 @@ from pystructurizr.viewer.cytoscape_view import (
 
 TreeNode = dict[str, Any]
 
-CYTOSCAPE_CDN = '<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>'
+CYTOSCAPE_CDN = (
+    '<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"'
+    ' integrity="sha384-IWROdLKRsN1UuJywMlWl7/blXQ8GEooN2n7dzTxfEPd7ybYIKCUJ2Ol/1Gpf3YV4"'
+    ' crossorigin="anonymous"></script>'
+)
 
 
 @dataclass
@@ -320,8 +324,13 @@ def index() -> None:
 
 
 def main() -> None:
-    """Start the NiceGUI server."""
-    ui.run(title="pystructurizr viewer", reload=False, show=False, port=8765)
+    """Start the NiceGUI server.
+
+    Binds to localhost only — the viewer has no authentication, so we
+    do not expose it on other interfaces. Override by editing this line
+    if you genuinely need to share the viewer (and add auth first).
+    """
+    ui.run(title="pystructurizr viewer", reload=False, show=False, host="127.0.0.1", port=8765)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
