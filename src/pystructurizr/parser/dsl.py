@@ -14,11 +14,19 @@ from pathlib import Path
 from typing import Iterator
 
 from pystructurizr.models import (
+    AutomaticLayout,
     Component,
     Container,
+    ContainerInstance,
+    DeploymentNode,
+    Enterprise,
+    InfrastructureNode,
+    Location,
     Person,
+    RankDirection,
     Relationship,
     SoftwareSystem,
+    SoftwareSystemInstance,
     View,
     ViewType,
     Workspace,
@@ -204,10 +212,15 @@ class _Parser:
         # keyword elements without alias
         if tok.type == IDENT:
             kw = tok.value.lower()
-            if kw in ("person", "softwaresystem", "container", "component"):
+            if kw in ("person", "softwaresystem", "container", "component",
+                      "deploymentnode", "infrastructurenode",
+                      "softwaresysteminstance", "containerinstance"):
                 self._parse_element(ws, alias=None, parent_id=parent_id)
                 return
-            if kw in ("group", "enterprise"):
+            if kw == "enterprise":
+                self._parse_enterprise(ws)
+                return
+            if kw == "group":
                 self._parse_group(ws, parent_id)
                 return
 
@@ -230,19 +243,21 @@ class _Parser:
         kw = self._advance().value.lower()
         name = self._optional_string()
         description = self._optional_string()
-        technology = self._optional_string() if kw in ("container", "component") else ""
+        technology = self._optional_string() if kw in ("container", "component", "deploymentnode", "infrastructurenode") else ""
         tags_str = self._optional_string()
         tags = [t.strip() for t in tags_str.split(",")] if tags_str else []
 
         elem_id = alias or name.replace(" ", "_").lower()
 
         if kw == "person":
-            elem = Person(id=elem_id, name=name, description=description, tags=tags)
+            location = Location.EXTERNAL if "External" in tags else Location.UNSPECIFIED
+            elem = Person(id=elem_id, name=name, description=description, tags=tags, location=location)
             ws.people.append(elem)
             if alias:
                 self._id_map[alias] = elem_id
         elif kw == "softwaresystem":
-            elem = SoftwareSystem(id=elem_id, name=name, description=description, tags=tags)
+            location = Location.EXTERNAL if "External" in tags else Location.UNSPECIFIED
+            elem = SoftwareSystem(id=elem_id, name=name, description=description, tags=tags, location=location)
             ws.software_systems.append(elem)
             if alias:
                 self._id_map[alias] = elem_id
@@ -266,6 +281,42 @@ class _Parser:
                     self._id_map[alias] = elem_id
                 if self._match(LBRACE):
                     self._skip_block()
+        elif kw == "deploymentnode":
+            node = DeploymentNode(id=elem_id, name=name, description=description, technology=technology, tags=tags)
+            parent_node = self._find_deployment_node(ws, parent_id)
+            if parent_node is not None:
+                parent_node.children.append(node)
+            else:
+                ws.deployment_nodes.append(node)
+            if alias:
+                self._id_map[alias] = elem_id
+            if self._match(LBRACE):
+                self._parse_deployment_node_body(ws, node)
+        elif kw == "infrastructurenode":
+            infra = InfrastructureNode(id=elem_id, name=name, description=description, technology=technology, tags=tags)
+            parent_node = self._find_deployment_node(ws, parent_id)
+            if parent_node is not None:
+                parent_node.infrastructure_nodes.append(infra)
+            if alias:
+                self._id_map[alias] = elem_id
+            if self._match(LBRACE):
+                self._skip_block()
+        elif kw == "softwaresysteminstance":
+            system_id = self._id_map.get(name, name)
+            inst = SoftwareSystemInstance(id=elem_id, software_system_id=system_id)
+            parent_node = self._find_deployment_node(ws, parent_id)
+            if parent_node is not None:
+                parent_node.software_system_instances.append(inst)
+            if alias:
+                self._id_map[alias] = elem_id
+        elif kw == "containerinstance":
+            container_id = self._id_map.get(name, name)
+            inst = ContainerInstance(id=elem_id, container_id=container_id)
+            parent_node = self._find_deployment_node(ws, parent_id)
+            if parent_node is not None:
+                parent_node.container_instances.append(inst)
+            if alias:
+                self._id_map[alias] = elem_id
 
     def _parse_software_system_body(self, ws: Workspace, system: SoftwareSystem) -> None:
         self._expect(LBRACE)
@@ -311,6 +362,16 @@ class _Parser:
                 self._advance()
         self._expect(RBRACE)
 
+    def _parse_enterprise(self, ws: Workspace) -> None:
+        self._advance()  # consume 'enterprise'
+        name = self._optional_string()
+        ws.enterprise = Enterprise(name=name)
+        if self._match(LBRACE):
+            self._expect(LBRACE)
+            while not self._match(RBRACE, EOF):
+                self._parse_model_item(ws, parent_id=None)
+            self._expect(RBRACE)
+
     def _parse_group(self, ws: Workspace, parent_id: str | None) -> None:
         self._advance()  # consume 'group'
         self._optional_string()  # group name
@@ -319,6 +380,27 @@ class _Parser:
             while not self._match(RBRACE, EOF):
                 self._parse_model_item(ws, parent_id)
             self._expect(RBRACE)
+
+    def _parse_deployment_node_body(self, ws: Workspace, node: DeploymentNode) -> None:
+        self._expect(LBRACE)
+        while not self._match(RBRACE, EOF):
+            tok = self._peek()
+            if tok.type == IDENT and self._lookahead_is_arrow():
+                self._parse_relationship()
+            elif tok.type == IDENT and self._lookahead_is_equals():
+                alias = self._advance().value
+                self._expect(EQUALS)
+                self._parse_element(ws, alias=alias, parent_id=node.id)
+            elif tok.type == IDENT:
+                kw = tok.value.lower()
+                if kw in ("deploymentnode", "infrastructurenode",
+                          "softwaresysteminstance", "containerinstance"):
+                    self._parse_element(ws, alias=None, parent_id=node.id)
+                else:
+                    self._advance()
+            else:
+                self._advance()
+        self._expect(RBRACE)
 
     def _parse_relationship(self) -> None:
         src = self._advance().value
@@ -346,7 +428,9 @@ class _Parser:
                 self._advance()
                 continue
             kw = tok.value.lower()
-            if kw == "systemcontext":
+            if kw == "systemlandscape":
+                ws.views.append(self._parse_view(ViewType.SYSTEM_LANDSCAPE))
+            elif kw == "systemcontext":
                 ws.views.append(self._parse_view(ViewType.SYSTEM_CONTEXT))
             elif kw == "container":
                 ws.views.append(self._parse_view(ViewType.CONTAINER))
@@ -407,9 +491,20 @@ class _Parser:
                 return
             if kw == "autolayout":
                 self._advance()
-                view.auto_layout = True
-                self._optional_ident()  # direction
-                self._optional_string()
+                direction_str = self._optional_ident().lower()
+                _RANK_DIRECTION_MAP = {
+                    "tb": RankDirection.TOP_BOTTOM,
+                    "bt": RankDirection.BOTTOM_TOP,
+                    "lr": RankDirection.LEFT_RIGHT,
+                    "rl": RankDirection.RIGHT_LEFT,
+                    "topbottom": RankDirection.TOP_BOTTOM,
+                    "bottomtop": RankDirection.BOTTOM_TOP,
+                    "leftright": RankDirection.LEFT_RIGHT,
+                    "rightleft": RankDirection.RIGHT_LEFT,
+                }
+                rank_dir = _RANK_DIRECTION_MAP.get(direction_str, RankDirection.TOP_BOTTOM)
+                self._optional_string()  # rank separation (ignored for now)
+                view.auto_layout = AutomaticLayout(rank_direction=rank_dir)
                 return
             if kw == "title":
                 self._advance()
@@ -436,6 +531,11 @@ class _Parser:
             elif tok.type == RBRACE:
                 depth -= 1
 
+    def _find_deployment_node(self, ws: Workspace, parent_id: str | None) -> DeploymentNode | None:
+        if parent_id is None:
+            return None
+        return _search_deployment_nodes(ws.deployment_nodes, parent_id)
+
     def _find_system(self, ws: Workspace, parent_id: str | None) -> SoftwareSystem | None:
         if parent_id is None:
             return None
@@ -452,6 +552,16 @@ class _Parser:
                 if c.id == parent_id:
                     return c
         return None
+
+
+def _search_deployment_nodes(nodes: list[DeploymentNode], target_id: str) -> DeploymentNode | None:
+    for node in nodes:
+        if node.id == target_id:
+            return node
+        found = _search_deployment_nodes(node.children, target_id)
+        if found is not None:
+            return found
+    return None
 
 
 def parse_dsl(source: str) -> Workspace:

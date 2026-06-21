@@ -12,6 +12,7 @@ from __future__ import annotations
 from pystructurizr.models import (
     Component,
     Container,
+    Location,
     Person,
     Relationship,
     SoftwareSystem,
@@ -64,14 +65,14 @@ class MermaidGenerator:
 
         for person in ws.people:
             if person.id in visible_ids:
-                tag = "Person_Ext" if person.external else "Person"
+                tag = "Person_Ext" if person.location == Location.EXTERNAL else "Person"
                 lines.append(
                     f'    {tag}({_safe_id(person.id)}, "{_q(person.name)}", "{_q(person.description)}")'
                 )
 
         for system in ws.software_systems:
             if system.id in visible_ids:
-                tag = "System_Ext" if system.external else "System"
+                tag = "System_Ext" if system.location == Location.EXTERNAL else "System"
                 lines.append(
                     f'    {tag}({_safe_id(system.id)}, "{_q(system.name)}", "{_q(system.description)}")'
                 )
@@ -99,7 +100,7 @@ class MermaidGenerator:
 
         for person in ws.people:
             if person.id in visible_ids:
-                tag = "Person_Ext" if person.external else "Person"
+                tag = "Person_Ext" if person.location == Location.EXTERNAL else "Person"
                 lines.append(
                     f'    {tag}({_safe_id(person.id)}, "{_q(person.name)}", "{_q(person.description)}")'
                 )
@@ -115,7 +116,7 @@ class MermaidGenerator:
                         )
                 lines.append("    }")
             elif system.id in visible_ids and system.id != view.element_id:
-                tag = "System_Ext" if system.external else "System"
+                tag = "System_Ext" if system.location == Location.EXTERNAL else "System"
                 lines.append(
                     f'    {tag}({_safe_id(system.id)}, "{_q(system.name)}", "{_q(system.description)}")'
                 )
@@ -167,7 +168,7 @@ class MermaidGenerator:
         # external containers / people
         for person in ws.people:
             if person.id in visible_ids:
-                tag = "Person_Ext" if person.external else "Person"
+                tag = "Person_Ext" if person.location == Location.EXTERNAL else "Person"
                 lines.append(
                     f'    {tag}({_safe_id(person.id)}, "{_q(person.name)}", "{_q(person.description)}")'
                 )

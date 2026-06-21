@@ -1,4 +1,5 @@
 from pathlib import Path
+from pystructurizr.models import Location
 from pystructurizr.parser.json_parser import parse_json, parse_json_file
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -36,4 +37,4 @@ def test_parse_json_views():
 def test_external_system_flag():
     ws = parse_json_file(FIXTURES / "example.json")
     email = next(s for s in ws.software_systems if s.name == "E-mail System")
-    assert email.external is True
+    assert email.location == Location.EXTERNAL
