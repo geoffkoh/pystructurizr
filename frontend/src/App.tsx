@@ -84,7 +84,12 @@ export default function App() {
           <ElementTree workspace={workspace} />
         </aside>
         <main className="main">
-          <GraphPane view={selectedView} />
+          <GraphPane
+            view={selectedView}
+            views={views}
+            workspace={workspace}
+            onNavigate={setSelectedView}
+          />
         </main>
       </div>
     </div>

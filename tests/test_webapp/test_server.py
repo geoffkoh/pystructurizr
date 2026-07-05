@@ -71,7 +71,14 @@ def test_view_graph_has_nodes_and_edges(client: TestClient) -> None:
     assert data["nodes"]
     assert data["edges"]
     node = data["nodes"][0]
-    assert set(node["data"]) == {"label", "kind", "color"}
+    assert set(node["data"]) == {
+        "label",
+        "kind",
+        "color",
+        "technology",
+        "description",
+        "tags",
+    }
 
 
 def test_unknown_view_key_returns_404(client: TestClient) -> None:

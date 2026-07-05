@@ -26,7 +26,8 @@ export type NodeKind =
   | "system"
   | "system-external"
   | "container"
-  | "component";
+  | "component"
+  | "boundary";
 
 /** A React Flow node as returned by GET /api/views/{key}/graph. */
 export interface GNode {
@@ -35,7 +36,12 @@ export interface GNode {
     label: string;
     kind: string;
     color: string | null;
+    technology: string;
+    description: string;
+    tags: string[];
   };
+  /** Present on nodes nested inside a boundary group node. */
+  parentId?: string;
   /** Usually ABSENT; when missing the frontend runs its own layout. */
   position?: { x: number; y: number };
 }
