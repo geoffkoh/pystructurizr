@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pystructurizr.models import View, Workspace
-from pystructurizr.viewer.g6_view import apply_positions
+from pystructurizr.webapp.g6_view import apply_positions
 from pystructurizr.webapp import graph
 from pystructurizr.webapp.loader import WorkspaceLoadError, load_workspace
 

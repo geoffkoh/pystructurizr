@@ -76,38 +76,6 @@ for view_name, mermaid_code in diagrams.items():
     print(f"{view_name}:\n{mermaid_code}\n")
 ```
 
-## Interactive Viewer
-
-A NiceGUI-based viewer is included for exploring a workspace and laying
-out views interactively.
-
-```bash
-uv run python -m pystructurizr.viewer.app
-# → http://localhost:8765
-```
-
-Features:
-
-- **Folder input** — point at a directory containing `workspace.dsl`.
-- **Hierarchical tree** — People, Software Systems → Containers →
-  Components, Deployment Nodes (recursive) → Infra/Instances, plus a
-  Views branch keyed by view key.
-- **Mermaid canvas** — click any view; the existing
-  `MermaidGenerator` renders it.
-- **G6 canvas** — toggle to an [AntV G6](https://g6.antv.antgroup.com/)
-  renderer for the same view; nodes are draggable, pan/zoom built in,
-  force-directed layout by default with per-kind colour palette.
-- **Save** — persists per-view node positions
-  (`View.element_views[i].x/y`) to `workspace.json` next to the loaded
-  DSL. The DSL itself is never modified.
-
-The viewer loads G6 from CDN (`unpkg.com/@antv/g6@5.1.1`) with a pinned
-Subresource Integrity hash; no build step required.
-
-> **Security**: the viewer has no authentication and binds to
-> `127.0.0.1` only. Do not expose it on a shared network without putting
-> it behind a reverse proxy with auth.
-
 ## React Web App
 
 A React (Vite + TypeScript) single-page app, served by a FastAPI backend
@@ -123,9 +91,9 @@ uv run pystructurizr webapp file.dsl          # preload a single file
 
 Pass a directory to browse and load any `.dsl`/`.json` file from the
 in-app file picker, or a single file to preload it. The element tree and
-per-view graph come from the same parser and `viewer/g6_view` used by the
-other tools; only `systemContext`/`container`/`component` views render a
-graph today (others are flagged "not renderable yet").
+per-view graph come from the parser and `webapp/g6_view`; only
+`systemContext`/`container`/`component` views render a graph today
+(others are flagged "not renderable yet").
 
 The built SPA ships inside the package (`pystructurizr/webapp/static/`),
 so end users need no Node toolchain. To rebuild the frontend after
@@ -139,12 +107,12 @@ npm run build          # outputs to ../src/pystructurizr/webapp/static/
 #           `uv run pystructurizr webapp samples/ --no-browser`
 ```
 
-> **Security**: like the other viewers, the web app has no authentication
-> and is intended for local use on `127.0.0.1`.
+> **Security**: the web app has no authentication and is intended for
+> local use on `127.0.0.1`.
 
 ### Tests
 
 ```bash
 uv run pytest                      # full suite
-uv run pytest tests/test_viewer    # viewer-only smoke tests
+uv run pytest tests/test_webapp    # web app tests only
 ```
