@@ -40,10 +40,12 @@ def is_supported(view: View) -> bool:
 def view_graph(workspace: Workspace, view: View) -> ReactFlowData:
     """Build React Flow ``{nodes, edges}`` data for ``view``.
 
-    Nodes carry their ``label``, ``kind`` and the kind's palette ``color`` in
-    ``data``. A ``position`` is included only when the underlying view element
-    has stored coordinates; otherwise it is omitted so the frontend can run
-    its own auto-layout.
+    Nodes carry their ``label``, ``kind``, the kind's palette ``color`` and
+    the element's ``technology``/``description``/``tags`` in ``data``. Nodes
+    nested inside a boundary group node carry a top-level ``parentId``. A
+    ``position`` is included only when the underlying view element has stored
+    coordinates; otherwise it is omitted so the frontend can run its own
+    auto-layout.
 
     Args:
         workspace: The workspace the view belongs to.
@@ -64,8 +66,13 @@ def view_graph(workspace: Workspace, view: View) -> ReactFlowData:
                 "label": data.get("label", ""),
                 "kind": kind,
                 "color": KIND_COLOURS.get(kind),
+                "technology": data.get("technology", ""),
+                "description": data.get("description", ""),
+                "tags": data.get("tags", []),
             },
         }
+        if "parentId" in g6_node:
+            node["parentId"] = g6_node["parentId"]
         style = g6_node.get("style")
         if style is not None and "x" in style and "y" in style:
             node["position"] = {"x": style["x"], "y": style["y"]}

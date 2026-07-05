@@ -64,6 +64,33 @@ def test_parse_example_fixture():
     assert len(ws.views) == 2
 
 
+def test_include_multiple_identifiers_on_one_line():
+    dsl = """
+    workspace {
+        model {
+            a = person "A"
+            b = person "B"
+            s = softwareSystem "S"
+            a -> s "Uses"
+        }
+        views {
+            systemContext s "v" {
+                include a b s
+                exclude b
+                autoLayout
+            }
+        }
+    }
+    """
+    ws = parse_dsl(dsl)
+    view = ws.views[0]
+    a, b, s = ws.people[0].id, ws.people[1].id, ws.software_systems[0].id
+    assert view.included_ids == [a, b, s]
+    assert view.excluded_ids == [b]
+    # autoLayout on the next line must not be swallowed as an included id.
+    assert view.auto_layout is not None
+
+
 def test_relationship_technology():
     dsl = """
     workspace {

@@ -182,6 +182,19 @@ class _Parser:
             return self._advance().value
         return ""
 
+    def _idents_on_line(self, line: int) -> list[str]:
+        """Consume identifiers that remain on ``line``, resolved to element ids.
+
+        Used for view ``include``/``exclude`` statements, which may name
+        several elements on one line; identifiers on later lines belong to
+        the next view statement.
+        """
+        resolved: list[str] = []
+        while self._match(IDENT) and self._peek().line == line:
+            raw = self._advance().value
+            resolved.append(self._id_map.get(raw, raw))
+        return resolved
+
     def _expect_keyword(self, kw: str) -> None:
         tok = self._advance()
         if tok.type != IDENT or tok.value.lower() != kw:
@@ -481,19 +494,16 @@ class _Parser:
         if tok.type == IDENT:
             kw = tok.value.lower()
             if kw == "include":
-                self._advance()
+                line = self._advance().line
                 if self._match(WILDCARD):
                     self._advance()
                     view.include_all = True
-                elif self._match(IDENT):
-                    raw = self._advance().value
-                    view.included_ids.append(self._id_map.get(raw, raw))
+                else:
+                    view.included_ids.extend(self._idents_on_line(line))
                 return
             if kw == "exclude":
-                self._advance()
-                if self._match(IDENT):
-                    raw = self._advance().value
-                    view.excluded_ids.append(self._id_map.get(raw, raw))
+                line = self._advance().line
+                view.excluded_ids.extend(self._idents_on_line(line))
                 return
             if kw == "autolayout":
                 self._advance()
