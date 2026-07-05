@@ -19,15 +19,22 @@ from pystructurizr.models import (
     Configuration,
     Container,
     ContainerInstance,
+    CustomElement,
+    Decision,
+    DecisionLink,
     DeploymentNode,
     Documentation,
     ElementStyle,
+    FilterMode,
+    Format,
     HttpHealthCheck,
+    Image,
     InfrastructureNode,
     Location,
     Model,
     Person,
     Perspective,
+    Section,
     RankDirection,
     Relationship,
     RelationshipStyle,
@@ -105,12 +112,15 @@ def _parse_component(data: dict[str, Any], parent_id: str = "") -> Component:
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
         parent_id=parent_id,
+        documentation=_parse_documentation(data.get("documentation")),
     )
 
 
 def _parse_container(data: dict[str, Any], parent_id: str = "") -> Container:
     container_id = data["id"]
-    components = [_parse_component(c, parent_id=container_id) for c in data.get("components", [])]
+    components = [
+        _parse_component(c, parent_id=container_id) for c in data.get("components", [])
+    ]
     return Container(
         id=container_id,
         name=data.get("name", ""),
@@ -123,13 +133,16 @@ def _parse_container(data: dict[str, Any], parent_id: str = "") -> Container:
         perspectives=_perspectives(data.get("perspectives")),
         group=data.get("group", ""),
         parent_id=parent_id,
+        documentation=_parse_documentation(data.get("documentation")),
     )
 
 
 def _parse_software_system(data: dict[str, Any]) -> SoftwareSystem:
     tag_list = _tags(data.get("tags"))
     system_id = data["id"]
-    containers = [_parse_container(c, parent_id=system_id) for c in data.get("containers", [])]
+    containers = [
+        _parse_container(c, parent_id=system_id) for c in data.get("containers", [])
+    ]
     return SoftwareSystem(
         id=system_id,
         name=data.get("name", ""),
@@ -137,6 +150,21 @@ def _parse_software_system(data: dict[str, Any]) -> SoftwareSystem:
         containers=containers,
         tags=tag_list,
         location=_location(tag_list),
+        url=data.get("url", ""),
+        properties=_properties(data.get("properties")),
+        perspectives=_perspectives(data.get("perspectives")),
+        group=data.get("group", ""),
+        documentation=_parse_documentation(data.get("documentation")),
+    )
+
+
+def _parse_custom_element(data: dict[str, Any]) -> CustomElement:
+    return CustomElement(
+        id=data["id"],
+        name=data.get("name", ""),
+        description=data.get("description", ""),
+        metadata=data.get("metadata", ""),
+        tags=_tags(data.get("tags")),
         url=data.get("url", ""),
         properties=_properties(data.get("properties")),
         perspectives=_perspectives(data.get("perspectives")),
@@ -203,7 +231,9 @@ def _parse_container_instance(data: dict[str, Any]) -> ContainerInstance:
     )
 
 
-def _parse_infrastructure_node(data: dict[str, Any], parent_id: str = "") -> InfrastructureNode:
+def _parse_infrastructure_node(
+    data: dict[str, Any], parent_id: str = ""
+) -> InfrastructureNode:
     return InfrastructureNode(
         id=data["id"],
         name=data.get("name", ""),
@@ -221,12 +251,16 @@ def _parse_infrastructure_node(data: dict[str, Any], parent_id: str = "") -> Inf
 
 def _parse_deployment_node(data: dict[str, Any], parent_id: str = "") -> DeploymentNode:
     node_id = data["id"]
-    children = [_parse_deployment_node(c, parent_id=node_id) for c in data.get("children", [])]
+    children = [
+        _parse_deployment_node(c, parent_id=node_id) for c in data.get("children", [])
+    ]
     infrastructure_nodes = [
-        _parse_infrastructure_node(n, parent_id=node_id) for n in data.get("infrastructureNodes", [])
+        _parse_infrastructure_node(n, parent_id=node_id)
+        for n in data.get("infrastructureNodes", [])
     ]
     software_system_instances = [
-        _parse_software_system_instance(i) for i in data.get("softwareSystemInstances", [])
+        _parse_software_system_instance(i)
+        for i in data.get("softwareSystemInstances", [])
     ]
     container_instances = [
         _parse_container_instance(i) for i in data.get("containerInstances", [])
@@ -294,17 +328,29 @@ def _parse_animation(data: dict[str, Any], order: int) -> Animation:
     )
 
 
+def _filter_mode(raw: str | None) -> Optional[FilterMode]:
+    if raw == FilterMode.INCLUDE.value:
+        return FilterMode.INCLUDE
+    if raw == FilterMode.EXCLUDE.value:
+        return FilterMode.EXCLUDE
+    return None
+
+
 def _parse_view(data: dict[str, Any], view_type: ViewType) -> View:
     included_ids = [e["id"] for e in data.get("elements", [])]
     include_all = "*" in data.get("includes", [])
-    relationship_views = [_parse_relationship_view(r) for r in data.get("relationships", [])]
+    relationship_views = [
+        _parse_relationship_view(r) for r in data.get("relationships", [])
+    ]
     animations = [
         _parse_animation(a, i + 1) for i, a in enumerate(data.get("animations", []))
     ]
     return View(
         type=view_type,
         key=data.get("key", ""),
-        element_id=data.get("softwareSystemId", data.get("containerId", data.get("elementId", ""))),
+        element_id=data.get(
+            "softwareSystemId", data.get("containerId", data.get("elementId", ""))
+        ),
         title=data.get("title", ""),
         description=data.get("description", ""),
         include_all=include_all or bool(included_ids),
@@ -318,6 +364,17 @@ def _parse_view(data: dict[str, Any], view_type: ViewType) -> View:
         disable_automatic_layout=bool(data.get("disableAutomaticLayout", False)),
         hide_element_metadata=bool(data.get("hideElementMetadata", False)),
         hide_relationship_metadata=bool(data.get("hideRelationshipMetadata", False)),
+        environment=data.get("environment", ""),
+        external_boundaries_visible=bool(data.get("externalBoundariesVisible", False)),
+        base_view_key=data.get("baseViewKey", ""),
+        filter_mode=_filter_mode(data.get("mode")),
+        filter_tags=_tags(",".join(data.get("tags", [])))
+        if isinstance(data.get("tags"), list)
+        else _tags(data.get("tags")),
+        content=data.get("content", ""),
+        content_light=data.get("contentLight", ""),
+        content_dark=data.get("contentDark", ""),
+        content_type=data.get("contentType", ""),
     )
 
 
@@ -368,42 +425,92 @@ def _parse_configuration(data: dict[str, Any] | None) -> Configuration:
         return Configuration()
     styles_data = data.get("styles", {})
     element_styles = [_parse_element_style(s) for s in styles_data.get("elements", [])]
-    relationship_styles = [_parse_relationship_style(s) for s in styles_data.get("relationships", [])]
+    relationship_styles = [
+        _parse_relationship_style(s) for s in styles_data.get("relationships", [])
+    ]
     terminology_data = data.get("terminology", {})
     default_terminology = Terminology()
     terminology = Terminology(
         enterprise=terminology_data.get("enterprise", default_terminology.enterprise),
         person=terminology_data.get("person", default_terminology.person),
-        software_system=terminology_data.get("softwareSystem", default_terminology.software_system),
+        software_system=terminology_data.get(
+            "softwareSystem", default_terminology.software_system
+        ),
         container=terminology_data.get("container", default_terminology.container),
         component=terminology_data.get("component", default_terminology.component),
         code=terminology_data.get("code", default_terminology.code),
-        deployment_node=terminology_data.get("deploymentNode", default_terminology.deployment_node),
-        infrastructure_node=terminology_data.get("infrastructureNode", default_terminology.infrastructure_node),
-        relationship=terminology_data.get("relationship", default_terminology.relationship),
+        deployment_node=terminology_data.get(
+            "deploymentNode", default_terminology.deployment_node
+        ),
+        infrastructure_node=terminology_data.get(
+            "infrastructureNode", default_terminology.infrastructure_node
+        ),
+        relationship=terminology_data.get(
+            "relationship", default_terminology.relationship
+        ),
     )
     return Configuration(
-        styles=Styles(element_styles=element_styles, relationship_styles=relationship_styles),
+        styles=Styles(
+            element_styles=element_styles, relationship_styles=relationship_styles
+        ),
         themes=data.get("themes", []),
         terminology=terminology,
         default_view=data.get("defaultView", ""),
+        last_saved_view=data.get("lastSavedView", ""),
+        metadata_symbols=data.get("metadataSymbols", ""),
         properties=_properties(data.get("properties")),
         branding=_parse_branding(data.get("branding")),
         generators_and_exporters=_properties(data.get("generatorsAndExporters")),
     )
 
 
-def _parse_documentation(data: dict[str, Any] | None) -> list[Documentation]:
+def _format(raw: str | None) -> Format:
+    if raw == Format.ASCIIDOC.value:
+        return Format.ASCIIDOC
+    return Format.MARKDOWN
+
+
+def _parse_documentation(data: dict[str, Any] | None) -> Documentation:
     if not data:
-        return []
-    sections = data.get("sections", [])
-    return [
-        Documentation(
+        return Documentation()
+    sections = [
+        Section(
             content=s.get("content", ""),
-            format=s.get("format", "Markdown"),
+            format=_format(s.get("format")),
+            title=s.get("title", ""),
+            filename=s.get("filename", ""),
+            order=int(s.get("order", 0)),
+            element_id=str(s.get("elementId", "")),
         )
-        for s in sections
+        for s in data.get("sections", [])
     ]
+    decisions = [
+        Decision(
+            id=str(d.get("id", "")),
+            title=d.get("title", ""),
+            date=d.get("date", ""),
+            status=d.get("status", ""),
+            content=d.get("content", ""),
+            format=_format(d.get("format")),
+            element_id=str(d.get("elementId", "")),
+            links=[
+                DecisionLink(
+                    id=str(link.get("id", "")), description=link.get("description", "")
+                )
+                for link in d.get("links", [])
+            ],
+        )
+        for d in data.get("decisions", [])
+    ]
+    images = [
+        Image(
+            name=img.get("name", ""),
+            content=img.get("content", ""),
+            type=img.get("type", ""),
+        )
+        for img in data.get("images", [])
+    ]
+    return Documentation(sections=sections, decisions=decisions, images=images)
 
 
 def parse_json(source: str) -> Workspace:
@@ -423,8 +530,15 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
     views_data = ws_data.get("views", {})
 
     people = [_parse_person(p) for p in model_data.get("people", [])]
-    software_systems = [_parse_software_system(s) for s in model_data.get("softwareSystems", [])]
-    deployment_nodes = [_parse_deployment_node(n) for n in model_data.get("deploymentNodes", [])]
+    software_systems = [
+        _parse_software_system(s) for s in model_data.get("softwareSystems", [])
+    ]
+    custom_elements = [
+        _parse_custom_element(c) for c in model_data.get("customElements", [])
+    ]
+    deployment_nodes = [
+        _parse_deployment_node(n) for n in model_data.get("deploymentNodes", [])
+    ]
     deployment_environments = list(model_data.get("deploymentEnvironments", []))
 
     relationships: list[Relationship] = []
@@ -433,6 +547,10 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
     for person in model_data.get("people", []):
         for r in person.get("relationships", []):
             r["sourceId"] = person["id"]
+            relationships.append(_parse_relationship(r))
+    for custom in model_data.get("customElements", []):
+        for r in custom.get("relationships", []):
+            r["sourceId"] = custom["id"]
             relationships.append(_parse_relationship(r))
     for system in model_data.get("softwareSystems", []):
         for r in system.get("relationships", []):
@@ -448,25 +566,51 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
                     relationships.append(_parse_relationship(r))
 
     view_set = ViewSet(
-        system_landscape_views=[_parse_view(v, ViewType.SYSTEM_LANDSCAPE) for v in views_data.get("systemLandscapeViews", [])],
-        system_context_views=[_parse_view(v, ViewType.SYSTEM_CONTEXT) for v in views_data.get("systemContextViews", [])],
-        container_views=[_parse_view(v, ViewType.CONTAINER) for v in views_data.get("containerViews", [])],
-        component_views=[_parse_view(v, ViewType.COMPONENT) for v in views_data.get("componentViews", [])],
-        dynamic_views=[_parse_view(v, ViewType.DYNAMIC) for v in views_data.get("dynamicViews", [])],
-        deployment_views=[_parse_view(v, ViewType.DEPLOYMENT) for v in views_data.get("deploymentViews", [])],
+        system_landscape_views=[
+            _parse_view(v, ViewType.SYSTEM_LANDSCAPE)
+            for v in views_data.get("systemLandscapeViews", [])
+        ],
+        system_context_views=[
+            _parse_view(v, ViewType.SYSTEM_CONTEXT)
+            for v in views_data.get("systemContextViews", [])
+        ],
+        container_views=[
+            _parse_view(v, ViewType.CONTAINER)
+            for v in views_data.get("containerViews", [])
+        ],
+        component_views=[
+            _parse_view(v, ViewType.COMPONENT)
+            for v in views_data.get("componentViews", [])
+        ],
+        dynamic_views=[
+            _parse_view(v, ViewType.DYNAMIC) for v in views_data.get("dynamicViews", [])
+        ],
+        deployment_views=[
+            _parse_view(v, ViewType.DEPLOYMENT)
+            for v in views_data.get("deploymentViews", [])
+        ],
+        custom_views=[
+            _parse_view(v, ViewType.CUSTOM) for v in views_data.get("customViews", [])
+        ],
+        image_views=[
+            _parse_view(v, ViewType.IMAGE) for v in views_data.get("imageViews", [])
+        ],
+        filtered_views=[
+            _parse_view(v, ViewType.FILTERED)
+            for v in views_data.get("filteredViews", [])
+        ],
         configuration=_parse_configuration(views_data.get("configuration")),
     )
 
     workspace_model = Model(
         people=people,
         software_systems=software_systems,
+        custom_elements=custom_elements,
         relationships=relationships,
         deployment_nodes=deployment_nodes,
         deployment_environments=deployment_environments,
+        properties=_properties(model_data.get("properties")),
     )
-
-    decisions_raw = ws_data.get("decisions", [])
-    decisions = [str(d) for d in decisions_raw] if isinstance(decisions_raw, list) else []
 
     return Workspace(
         name=ws_data.get("name", ""),
@@ -477,9 +621,10 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         version=int(ws_data.get("version", 1)),
         revision=int(ws_data.get("revision", 1)),
         last_modified_date=ws_data.get("lastModifiedDate", ""),
-        last_modified_by=ws_data.get("lastModifiedUser", ws_data.get("lastModifiedBy", "")),
+        last_modified_by=ws_data.get(
+            "lastModifiedUser", ws_data.get("lastModifiedBy", "")
+        ),
         created_date=ws_data.get("createdDate", ""),
         created_by=ws_data.get("createdUser", ws_data.get("createdBy", "")),
         documentation=_parse_documentation(ws_data.get("documentation")),
-        decisions=decisions,
     )

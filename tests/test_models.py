@@ -10,10 +10,12 @@ from pystructurizr.models import (
     Container,
     ContainerInstance,
     CustomElement,
+    Decision,
     DeploymentNode,
     ElementStyle,
     Enterprise,
     FilterMode,
+    Format,
     HttpHealthCheck,
     IconPosition,
     InfrastructureNode,
@@ -29,6 +31,7 @@ from pystructurizr.models import (
     RelationshipStyle,
     RelationshipView,
     Routing,
+    Section,
     Shape,
     SoftwareSystem,
     SoftwareSystemInstance,
@@ -568,21 +571,48 @@ def test_configuration_branding_and_exporters() -> None:
 
 def test_documentation_defaults() -> None:
     d = Documentation()
-    assert d.content == ""
-    assert d.format == "Markdown"
+    assert d.sections == []
+    assert d.decisions == []
+    assert d.images == []
+
+
+def test_section_and_format_defaults() -> None:
+    s = Section(content="# Overview")
+    assert s.content == "# Overview"
+    assert s.format is Format.MARKDOWN
+    assert Format.ASCIIDOC == "AsciiDoc"
 
 
 def test_workspace_documentation_and_decisions() -> None:
     ws = Workspace(name="W")
-    assert ws.documentation == []
-    assert ws.decisions == []
+    assert ws.documentation.sections == []
+    assert ws.documentation.decisions == []
     ws = Workspace(
         name="W",
-        documentation=[Documentation(content="# Overview")],
-        decisions=["ADR-001", "ADR-002"],
+        documentation=Documentation(
+            sections=[Section(content="# Overview")],
+            decisions=[
+                Decision(id="1", title="ADR-001", status="Accepted"),
+                Decision(id="2", title="ADR-002", status="Proposed"),
+            ],
+        ),
     )
-    assert ws.documentation[0].content == "# Overview"
-    assert ws.decisions == ["ADR-001", "ADR-002"]
+    assert ws.documentation.sections[0].content == "# Overview"
+    assert [d.title for d in ws.documentation.decisions] == ["ADR-001", "ADR-002"]
+
+
+def test_element_documentation() -> None:
+    sys = SoftwareSystem(id="1", name="S")
+    assert sys.documentation.sections == []
+    sys.documentation.sections.append(Section(content="details"))
+    assert sys.documentation.sections[0].content == "details"
+
+
+def test_model_custom_elements_and_properties() -> None:
+    ce = CustomElement(id="ce1", name="Box")
+    m = Model(custom_elements=[ce], properties={"owner": "team-a"})
+    assert m.find_element("ce1") is ce
+    assert m.properties["owner"] == "team-a"
 
 
 def test_workspace_validate_clean() -> None:
