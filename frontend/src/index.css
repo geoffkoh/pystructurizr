@@ -414,3 +414,44 @@ button {
   font-size: 12px;
   margin: 0 2px;
 }
+
+/* ---- Edge style selector ---- */
+.edge-style {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: var(--shadow);
+}
+
+.edge-style__title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+.edge-style__option {
+  border: none;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  padding: 3px 8px;
+  border-radius: 5px;
+}
+
+.edge-style__option:hover {
+  background: var(--bg);
+}
+
+.edge-style__option--active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
