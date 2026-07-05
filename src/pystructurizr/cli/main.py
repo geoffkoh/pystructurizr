@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import click
 
 from pystructurizr.generators.mermaid import MermaidGenerator
-from pystructurizr.parser import parse_dsl, parse_json
+from pystructurizr.models import Workspace
+from pystructurizr.webapp.loader import WorkspaceLoadError, load_workspace
 
 
-def _load_workspace(path: Path):
-    suffix = path.suffix.lower()
-    if suffix == ".json":
-        return parse_json(path.read_text(encoding="utf-8"))
-    if suffix in (".dsl", ".structurizr", ""):
-        return parse_dsl(path.read_text(encoding="utf-8"))
-    raise click.BadParameter(f"Unsupported file type: {suffix}. Use .dsl or .json")
+def _load_workspace(path: Path) -> Workspace:
+    """Load a workspace, mapping loader errors to a CLI-friendly message."""
+    try:
+        return load_workspace(path)
+    except WorkspaceLoadError as exc:
+        raise click.BadParameter(str(exc)) from exc
 
 
 @click.group()
@@ -29,25 +28,30 @@ def cli() -> None:
 @cli.command("generate")
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Path(path_type=Path),
     default=None,
     help="Output directory (default: print to stdout).",
 )
 @click.option(
-    "--view", "-v",
+    "--view",
+    "-v",
     "view_key",
     default=None,
     help="Only generate for this view key.",
 )
 @click.option(
-    "--format", "-f",
+    "--format",
+    "-f",
     "fmt",
     type=click.Choice(["mermaid"], case_sensitive=False),
     default="mermaid",
     show_default=True,
 )
-def generate(input_file: Path, output: Path | None, view_key: str | None, fmt: str) -> None:
+def generate(
+    input_file: Path, output: Path | None, view_key: str | None, fmt: str
+) -> None:
     """Generate diagrams from INPUT_FILE (DSL or JSON)."""
     workspace = _load_workspace(input_file)
     generator = MermaidGenerator(workspace)
@@ -101,3 +105,38 @@ def serve(input_file: Path, port: int, host: str) -> None:
 
     workspace = _load_workspace(input_file)
     run_app(workspace, host=host, port=port)
+
+
+@cli.command("webapp")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--port", default=8090, show_default=True, help="Port to listen on.")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option(
+    "--no-browser",
+    is_flag=True,
+    default=False,
+    help="Do not open a browser window automatically.",
+)
+def webapp(path: Path, port: int, host: str, no_browser: bool) -> None:
+    """Launch the React web application backend for PATH.
+
+    PATH may be a directory (browsed as the source root) or a single source
+    file (loaded eagerly, with its parent directory as the root).
+    """
+    from pystructurizr.webapp.server import run_server
+
+    if path.is_dir():
+        root: Path = path
+        initial: Path | None = None
+    else:
+        root = path.parent
+        initial = path
+
+    if not no_browser:
+        import threading
+        import webbrowser
+
+        url = f"http://{host}:{port}"
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+
+    run_server(root=root, initial=initial, host=host, port=port)
