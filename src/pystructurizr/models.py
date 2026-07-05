@@ -148,6 +148,74 @@ class PaperSize(str, Enum):
     SLIDE_16_10 = "Slide_16_10"
 
 
+class Format(str, Enum):
+    """Markup format for documentation sections and decisions."""
+
+    MARKDOWN = "Markdown"
+    ASCIIDOC = "AsciiDoc"
+
+
+# ---------------------------------------------------------------------------
+# Documentation value objects
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Section:
+    """A section of long-form documentation attached to an element or workspace."""
+
+    content: str = ""
+    format: Format = Format.MARKDOWN
+    title: str = ""
+    filename: str = ""
+    order: int = 0
+    element_id: str = ""
+
+
+@dataclass
+class DecisionLink:
+    """A link from one architecture decision to another."""
+
+    id: str
+    description: str = ""
+
+
+@dataclass
+class Decision:
+    """An architecture decision record (ADR)."""
+
+    id: str
+    title: str = ""
+    date: str = ""
+    status: str = ""
+    content: str = ""
+    format: Format = Format.MARKDOWN
+    element_id: str = ""
+    links: list[DecisionLink] = field(default_factory=list)
+
+
+@dataclass
+class Image:
+    """An image embedded in documentation."""
+
+    name: str = ""
+    content: str = ""
+    type: str = ""
+
+
+@dataclass
+class Documentation:
+    """A container for documentation sections, decisions, and images.
+
+    Attached to a workspace or to a static-structure element
+    (software system, container, or component).
+    """
+
+    sections: list[Section] = field(default_factory=list)
+    decisions: list[Decision] = field(default_factory=list)
+    images: list[Image] = field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Supporting value objects
 # ---------------------------------------------------------------------------
@@ -251,6 +319,7 @@ class Component:
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
     parent_id: str = ""
+    documentation: Documentation = field(default_factory=Documentation)
 
 
 @dataclass
@@ -268,6 +337,7 @@ class Container:
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
     parent_id: str = ""
+    documentation: Documentation = field(default_factory=Documentation)
 
 
 @dataclass
@@ -284,6 +354,7 @@ class SoftwareSystem:
     properties: dict[str, str] = field(default_factory=dict)
     perspectives: list[Perspective] = field(default_factory=list)
     group: str = ""
+    documentation: Documentation = field(default_factory=Documentation)
 
 
 @dataclass
@@ -390,7 +461,9 @@ class DeploymentNode:
     icon: str = ""
     children: list[DeploymentNode] = field(default_factory=list)
     infrastructure_nodes: list[InfrastructureNode] = field(default_factory=list)
-    software_system_instances: list[SoftwareSystemInstance] = field(default_factory=list)
+    software_system_instances: list[SoftwareSystemInstance] = field(
+        default_factory=list
+    )
     container_instances: list[ContainerInstance] = field(default_factory=list)
     deployment_groups: list[str] = field(default_factory=list)
 
@@ -455,6 +528,18 @@ class View:
     disable_automatic_layout: bool = False
     hide_element_metadata: bool = False
     hide_relationship_metadata: bool = False
+    # Deployment / dynamic views
+    environment: str = ""
+    external_boundaries_visible: bool = False
+    # Filtered views
+    base_view_key: str = ""
+    filter_mode: Optional[FilterMode] = None
+    filter_tags: list[str] = field(default_factory=list)
+    # Image views
+    content: str = ""
+    content_light: str = ""
+    content_dark: str = ""
+    content_type: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -537,14 +622,6 @@ class Branding:
 
 
 @dataclass
-class Documentation:
-    """Long-form documentation attached to a workspace."""
-
-    content: str = ""
-    format: str = "Markdown"
-
-
-@dataclass
 class Configuration:
     """Workspace view configuration: styles, themes, and terminology."""
 
@@ -552,6 +629,8 @@ class Configuration:
     themes: list[str] = field(default_factory=list)
     terminology: Terminology = field(default_factory=Terminology)
     default_view: str = ""
+    last_saved_view: str = ""
+    metadata_symbols: str = ""
     view_sort_order: Optional[ViewSortOrder] = None
     properties: dict[str, str] = field(default_factory=dict)
     branding: Optional[Branding] = None
@@ -569,10 +648,12 @@ class Model:
 
     people: list[Person] = field(default_factory=list)
     software_systems: list[SoftwareSystem] = field(default_factory=list)
+    custom_elements: list[CustomElement] = field(default_factory=list)
     relationships: list[Relationship] = field(default_factory=list)
     deployment_nodes: list[DeploymentNode] = field(default_factory=list)
     deployment_environments: list[str] = field(default_factory=list)
     enterprise: Optional[Enterprise] = None
+    properties: dict[str, str] = field(default_factory=dict)
 
     def find_element(
         self, element_id: str
@@ -590,6 +671,9 @@ class Model:
         for p in self.people:
             if p.id == element_id:
                 return p
+        for ce in self.custom_elements:
+            if ce.id == element_id:
+                return ce
         for s in self.software_systems:
             if s.id == element_id:
                 return s
@@ -608,7 +692,9 @@ class Model:
     def all_relationships_for(self, ids: set[str]) -> list[Relationship]:
         """Return relationships where both source and destination are in ids."""
         return [
-            r for r in self.relationships if r.source_id in ids and r.destination_id in ids
+            r
+            for r in self.relationships
+            if r.source_id in ids and r.destination_id in ids
         ]
 
 
@@ -625,6 +711,7 @@ _VIEW_TYPE_TO_ATTR: dict[ViewType, str] = {
     ViewType.DYNAMIC: "dynamic_views",
     ViewType.DEPLOYMENT: "deployment_views",
     ViewType.CUSTOM: "custom_views",
+    ViewType.IMAGE: "image_views",
     ViewType.FILTERED: "filtered_views",
 }
 
@@ -640,6 +727,7 @@ class ViewSet:
     dynamic_views: list[View] = field(default_factory=list)
     deployment_views: list[View] = field(default_factory=list)
     custom_views: list[View] = field(default_factory=list)
+    image_views: list[View] = field(default_factory=list)
     filtered_views: list[View] = field(default_factory=list)
     configuration: Configuration = field(default_factory=Configuration)
 
@@ -653,6 +741,7 @@ class ViewSet:
             *self.dynamic_views,
             *self.deployment_views,
             *self.custom_views,
+            *self.image_views,
             *self.filtered_views,
         ]
 
@@ -676,6 +765,7 @@ class ViewSet:
             + len(self.dynamic_views)
             + len(self.deployment_views)
             + len(self.custom_views)
+            + len(self.image_views)
             + len(self.filtered_views)
         )
 
@@ -703,12 +793,15 @@ class Workspace:
     last_modified_by: str = ""
     created_date: str = ""
     created_by: str = ""
-    documentation: list[Documentation] = field(default_factory=list)
-    decisions: list[str] = field(default_factory=list)
+    documentation: Documentation = field(default_factory=Documentation)
 
     @property
     def people(self) -> list[Person]:
         return self.model.people
+
+    @property
+    def custom_elements(self) -> list[CustomElement]:
+        return self.model.custom_elements
 
     @property
     def software_systems(self) -> list[SoftwareSystem]:

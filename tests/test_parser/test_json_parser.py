@@ -23,7 +23,9 @@ def test_parse_json_relationships():
 
 def test_parse_json_containers():
     ws = parse_json_file(FIXTURES / "example.json")
-    banking = next(s for s in ws.software_systems if s.name == "Internet Banking System")
+    banking = next(
+        s for s in ws.software_systems if s.name == "Internet Banking System"
+    )
     assert len(banking.containers) == 3
 
 
@@ -43,29 +45,33 @@ def test_external_system_flag():
 
 def test_container_parent_id_set_from_json():
     ws = parse_json_file(FIXTURES / "example.json")
-    banking = next(s for s in ws.software_systems if s.name == "Internet Banking System")
+    banking = next(
+        s for s in ws.software_systems if s.name == "Internet Banking System"
+    )
     assert banking.containers, "fixture should have containers"
     for c in banking.containers:
         assert c.parent_id == banking.id
 
 
 def test_deployment_hierarchy_parent_id_from_json():
-    raw = json.dumps({
-        "workspace": {
-            "name": "W",
-            "model": {
-                "deploymentNodes": [
-                    {
-                        "id": "1",
-                        "name": "AWS",
-                        "instances": 2,
-                        "children": [{"id": "2", "name": "EC2"}],
-                        "infrastructureNodes": [{"id": "3", "name": "LB"}],
-                    }
-                ],
-            },
+    raw = json.dumps(
+        {
+            "workspace": {
+                "name": "W",
+                "model": {
+                    "deploymentNodes": [
+                        {
+                            "id": "1",
+                            "name": "AWS",
+                            "instances": 2,
+                            "children": [{"id": "2", "name": "EC2"}],
+                            "infrastructureNodes": [{"id": "3", "name": "LB"}],
+                        }
+                    ],
+                },
+            }
         }
-    })
+    )
     ws = parse_json(raw)
     aws = ws.deployment_nodes[0]
     assert aws.parent_id == ""
@@ -75,18 +81,28 @@ def test_deployment_hierarchy_parent_id_from_json():
 
 
 def test_perspective_title_from_json():
-    raw = json.dumps({
-        "workspace": {
-            "name": "W",
-            "model": {
-                "people": [
-                    {"id": "1", "name": "User", "perspectives": [
-                        {"name": "Security", "title": "Sec view", "value": "high"}
-                    ]}
-                ],
-            },
+    raw = json.dumps(
+        {
+            "workspace": {
+                "name": "W",
+                "model": {
+                    "people": [
+                        {
+                            "id": "1",
+                            "name": "User",
+                            "perspectives": [
+                                {
+                                    "name": "Security",
+                                    "title": "Sec view",
+                                    "value": "high",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
         }
-    })
+    )
     ws = parse_json(raw)
     assert ws.people[0].perspectives[0].title == "Sec view"
 
@@ -97,18 +113,24 @@ def test_perspective_title_from_json():
 
 
 def test_parse_branding_and_exporters_from_json():
-    raw = json.dumps({
-        "workspace": {
-            "name": "W",
-            "model": {},
-            "views": {
-                "configuration": {
-                    "branding": {"color": "#0a0", "font": "Inter", "logo": "https://x/logo.png"},
-                    "generatorsAndExporters": {"plantuml": "PlantUMLExporter"},
-                }
-            },
+    raw = json.dumps(
+        {
+            "workspace": {
+                "name": "W",
+                "model": {},
+                "views": {
+                    "configuration": {
+                        "branding": {
+                            "color": "#0a0",
+                            "font": "Inter",
+                            "logo": "https://x/logo.png",
+                        },
+                        "generatorsAndExporters": {"plantuml": "PlantUMLExporter"},
+                    }
+                },
+            }
         }
-    })
+    )
     ws = parse_json(raw)
     assert ws.configuration.branding is not None
     assert ws.configuration.branding.color == "#0a0"
@@ -117,32 +139,42 @@ def test_parse_branding_and_exporters_from_json():
 
 
 def test_parse_workspace_documentation_and_decisions_from_json():
-    raw = json.dumps({
-        "workspace": {
-            "name": "W",
-            "model": {},
-            "documentation": {"sections": [
-                {"content": "# Overview", "format": "Markdown"},
-                {"content": "Sec details", "format": "AsciiDoc"},
-            ]},
-            "decisions": ["ADR-1", "ADR-2"],
+    raw = json.dumps(
+        {
+            "workspace": {
+                "name": "W",
+                "model": {},
+                "documentation": {
+                    "sections": [
+                        {"content": "# Overview", "format": "Markdown"},
+                        {"content": "Sec details", "format": "AsciiDoc"},
+                    ],
+                    "decisions": [
+                        {"id": "1", "title": "Use Python", "status": "Accepted"},
+                        {"id": "2", "title": "Use uv", "status": "Proposed"},
+                    ],
+                },
+            }
         }
-    })
+    )
     ws = parse_json(raw)
-    assert len(ws.documentation) == 2
-    assert ws.documentation[0].content == "# Overview"
-    assert ws.documentation[1].format == "AsciiDoc"
-    assert ws.decisions == ["ADR-1", "ADR-2"]
+    assert len(ws.documentation.sections) == 2
+    assert ws.documentation.sections[0].content == "# Overview"
+    assert ws.documentation.sections[1].format == "AsciiDoc"
+    assert [d.id for d in ws.documentation.decisions] == ["1", "2"]
+    assert ws.documentation.decisions[0].status == "Accepted"
 
 
 def test_terminology_defaults_preserved_when_json_omits_them():
-    raw = json.dumps({
-        "workspace": {
-            "name": "W",
-            "model": {},
-            "views": {"configuration": {"terminology": {}}},
+    raw = json.dumps(
+        {
+            "workspace": {
+                "name": "W",
+                "model": {},
+                "views": {"configuration": {"terminology": {}}},
+            }
         }
-    })
+    )
     ws = parse_json(raw)
     assert ws.configuration.terminology.person == "Person"
     assert ws.configuration.terminology.software_system == "Software System"
