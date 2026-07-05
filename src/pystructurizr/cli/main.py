@@ -95,18 +95,6 @@ def list_views(input_file: Path) -> None:
         click.echo(f"{view.key:<30} {view.type:<20} {view.element_id}")
 
 
-@cli.command("serve")
-@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
-@click.option("--port", default=8080, show_default=True, help="Port to listen on.")
-@click.option("--host", default="127.0.0.1", show_default=True)
-def serve(input_file: Path, port: int, host: str) -> None:
-    """Launch the web viewer for INPUT_FILE."""
-    from pystructurizr.web.app import run_app
-
-    workspace = _load_workspace(input_file)
-    run_app(workspace, host=host, port=port)
-
-
 @cli.command("webapp")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--port", default=8090, show_default=True, help="Port to listen on.")

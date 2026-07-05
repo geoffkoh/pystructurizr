@@ -2,7 +2,7 @@
 
 The heavy lifting (deciding which elements are visible and collecting the
 relationships between them) lives in
-:mod:`pystructurizr.viewer.g6_view`. This module re-shapes that G6 output
+:mod:`pystructurizr.webapp.g6_view`. This module re-shapes that graph output
 into the node/edge structure the React Flow frontend expects.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from pystructurizr.models import View, ViewType, Workspace
-from pystructurizr.viewer.g6_view import KIND_COLOURS, to_g6_data
+from pystructurizr.webapp.g6_view import KIND_COLOURS, to_g6_data
 
 
 ReactFlowNode = dict[str, Any]
