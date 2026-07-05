@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import importlib.resources
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -120,11 +121,33 @@ def _views_index(workspace: Workspace) -> list[dict[str, Any]]:
     ]
 
 
-def _iter_source_files(root: Path) -> list[str]:
-    """Return POSIX-relative paths of source files under ``root``.
+_WORKSPACE_RE = re.compile(r"^\s*workspace\b", re.MULTILINE)
 
-    Recurses up to ``_MAX_DEPTH`` levels, skipping hidden directories and
-    well-known noise directories (``node_modules``, ``.venv`` ...).
+
+def _is_workspace_root(path: Path) -> bool:
+    """Whether a source file defines a workspace of its own.
+
+    DSL sources split across files via ``!include`` contain fragment files
+    (elements/relationships only) that cannot be loaded standalone; only
+    files declaring a ``workspace`` block are offered in the browser. JSON
+    exports are always complete workspaces.
+    """
+    if path.suffix.lower() == ".json":
+        return True
+    try:
+        with path.open(encoding="utf-8", errors="ignore") as handle:
+            head = handle.read(8192)
+    except OSError:
+        return False
+    return _WORKSPACE_RE.search(head) is not None
+
+
+def _iter_source_files(root: Path) -> list[str]:
+    """Return POSIX-relative paths of loadable source files under ``root``.
+
+    Recurses up to ``_MAX_DEPTH`` levels, skipping hidden directories,
+    well-known noise directories (``node_modules``, ``.venv`` ...) and DSL
+    fragment files that only exist to be ``!include``-ed.
     """
     found: list[str] = []
 
@@ -140,7 +163,7 @@ def _iter_source_files(root: Path) -> list[str]:
                 if entry.name.startswith(".") or entry.name in _SKIP_DIRS:
                     continue
                 walk(entry, depth + 1)
-            elif entry.suffix.lower() in _SOURCE_SUFFIXES:
+            elif entry.suffix.lower() in _SOURCE_SUFFIXES and _is_workspace_root(entry):
                 found.append(entry.relative_to(root).as_posix())
 
     walk(root, 0)

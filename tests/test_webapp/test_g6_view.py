@@ -141,6 +141,13 @@ class TestComponentView:
         ws.model.software_systems.append(
             SoftwareSystem(id="pay", name="Payment Provider")
         )
+        ws.model.software_systems.append(
+            SoftwareSystem(
+                id="obs",
+                name="Observability",
+                containers=[Container(id="logStore", name="Log Store")],
+            )
+        )
         ws.model.people.append(Person(id="user", name="Customer"))
         ws.model.relationships.extend(
             [
@@ -148,6 +155,7 @@ class TestComponentView:
                 Relationship(source_id="ctrl", destination_id="svc", id="r2"),
                 Relationship(source_id="svc", destination_id="db", id="r3"),
                 Relationship(source_id="svc", destination_id="pay", id="r4"),
+                Relationship(source_id="svc", destination_id="logStore", id="r5"),
             ]
         )
         ws.views.append(
@@ -179,6 +187,16 @@ class TestComponentView:
         assert "cache" not in by_id
         assert "shop" not in by_id
 
+    def test_peer_appears_at_declared_level_only(
+        self, component_workspace: Workspace
+    ) -> None:
+        data = to_g6_data(component_workspace, component_workspace.views[0])
+        by_id = {n["id"]: n for n in data["nodes"]}
+        # svc -> logStore is declared against the container, so the container
+        # shows and its parent system must NOT also appear as a floater.
+        assert "logStore" in by_id
+        assert "obs" not in by_id
+
     def test_cross_boundary_edges_survive(self, component_workspace: Workspace) -> None:
         data = to_g6_data(component_workspace, component_workspace.views[0])
         pairs = _edge_pairs(data)
@@ -187,6 +205,7 @@ class TestComponentView:
             ("ctrl", "svc"),
             ("svc", "db"),
             ("svc", "pay"),
+            ("svc", "logStore"),
         }
 
 

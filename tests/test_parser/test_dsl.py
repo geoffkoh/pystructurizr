@@ -1,6 +1,6 @@
 from pathlib import Path
 import pytest
-from pystructurizr.parser.dsl import parse_dsl, parse_dsl_file
+from pystructurizr.parser.dsl import ParseError, parse_dsl, parse_dsl_file
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -89,6 +89,41 @@ def test_include_multiple_identifiers_on_one_line():
     assert view.excluded_ids == [b]
     # autoLayout on the next line must not be swallowed as an included id.
     assert view.auto_layout is not None
+
+
+def test_include_splits_workspace_across_files():
+    ws = parse_dsl_file(FIXTURES / "split_workspace" / "workspace.dsl")
+    assert ws.name == "Split Workspace"
+    assert len(ws.people) == 1
+    assert len(ws.software_systems) == 1
+    assert ws.software_systems[0].containers[0].name == "API"
+    # Relationship declared in a nested include, across fragment files.
+    assert len(ws.relationships) == 1
+    assert ws.relationships[0].description == "Calls"
+    assert len(ws.views) == 1
+
+
+def test_include_missing_file_raises(tmp_path: Path):
+    main = tmp_path / "workspace.dsl"
+    main.write_text(
+        'workspace "W" { model {\n!include missing.dsl\n} }', encoding="utf-8"
+    )
+    with pytest.raises(ParseError, match="not found"):
+        parse_dsl_file(main)
+
+
+def test_include_cycle_raises(tmp_path: Path):
+    a = tmp_path / "a.dsl"
+    b = tmp_path / "b.dsl"
+    a.write_text('workspace "W" { model {\n!include b.dsl\n} }', encoding="utf-8")
+    b.write_text("!include a.dsl\n", encoding="utf-8")
+    with pytest.raises(ParseError, match="Circular"):
+        parse_dsl_file(a)
+
+
+def test_include_without_file_context_raises():
+    with pytest.raises(ParseError, match="file context"):
+        parse_dsl('workspace "W" { model {\n!include other.dsl\n} }')
 
 
 def test_relationship_technology():
