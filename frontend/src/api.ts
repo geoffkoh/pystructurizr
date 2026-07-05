@@ -1,0 +1,100 @@
+// Centralized, typed API client for the pystructurizr backend.
+// All network access goes through these wrappers so error handling and the
+// URL scheme live in exactly one place. In dev, "/api" is proxied to the
+// FastAPI server (see vite.config.ts); in production the SPA is served from
+// the same origin as the backend.
+
+import type {
+  GraphData,
+  LayoutResult,
+  LoadResult,
+  ViewInfo,
+  Workspace,
+} from "./types";
+
+/** Raised for any non-2xx API response, carrying the HTTP status. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** Pull a human-readable message out of a failed response body. */
+async function extractError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as unknown;
+    if (body && typeof body === "object" && "detail" in body) {
+      const detail = (body as { detail: unknown }).detail;
+      if (typeof detail === "string") return detail;
+      return JSON.stringify(detail);
+    }
+    return JSON.stringify(body);
+  } catch {
+    return response.statusText || `HTTP ${response.status}`;
+  }
+}
+
+/** Perform a fetch and decode JSON, throwing ApiError on failure. */
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (cause) {
+    throw new ApiError(
+      0,
+      cause instanceof Error ? cause.message : "Network request failed",
+    );
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, await extractError(response));
+  }
+  return (await response.json()) as T;
+}
+
+/** GET /api/files -> list of source paths relative to the server root. */
+export function listFiles(): Promise<string[]> {
+  return request<string[]>("/api/files");
+}
+
+/** POST /api/load -> load the workspace at the given relative path. */
+export function loadFile(path: string): Promise<LoadResult> {
+  return request<LoadResult>("/api/load", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** GET /api/workspace -> the full loaded workspace model. */
+export function getWorkspace(): Promise<Workspace> {
+  return request<Workspace>("/api/workspace");
+}
+
+/** GET /api/views -> the index of views in the loaded workspace. */
+export function listViews(): Promise<ViewInfo[]> {
+  return request<ViewInfo[]>("/api/views");
+}
+
+/** GET /api/views/{key}/graph -> React Flow graph data for a view. */
+export function getViewGraph(key: string): Promise<GraphData> {
+  return request<GraphData>(`/api/views/${encodeURIComponent(key)}/graph`);
+}
+
+/** POST /api/views/{key}/layout -> persist dragged node positions. */
+export function saveLayout(
+  key: string,
+  positions: Record<string, [number, number]>,
+): Promise<LayoutResult> {
+  return request<LayoutResult>(
+    `/api/views/${encodeURIComponent(key)}/layout`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ positions }),
+    },
+  );
+}

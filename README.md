@@ -108,6 +108,40 @@ Subresource Integrity hash; no build step required.
 > `127.0.0.1` only. Do not expose it on a shared network without putting
 > it behind a reverse proxy with auth.
 
+## React Web App
+
+A React (Vite + TypeScript) single-page app, served by a FastAPI backend
+and launched from the CLI, for loading DSL/JSON files from disk and
+exploring each view as an interactive [React Flow](https://reactflow.dev/)
+graph (draggable nodes, pan/zoom, minimap).
+
+```bash
+uv run pystructurizr webapp samples/          # browse a directory
+uv run pystructurizr webapp file.dsl          # preload a single file
+# → opens http://127.0.0.1:8090 (use --no-browser to skip, --port to change)
+```
+
+Pass a directory to browse and load any `.dsl`/`.json` file from the
+in-app file picker, or a single file to preload it. The element tree and
+per-view graph come from the same parser and `viewer/g6_view` used by the
+other tools; only `systemContext`/`container`/`component` views render a
+graph today (others are flagged "not renderable yet").
+
+The built SPA ships inside the package (`pystructurizr/webapp/static/`),
+so end users need no Node toolchain. To rebuild the frontend after
+changes (requires Node 18+):
+
+```bash
+cd frontend
+npm install
+npm run build          # outputs to ../src/pystructurizr/webapp/static/
+# dev loop: `npm run dev` (Vite :5173, proxies /api → :8090) alongside
+#           `uv run pystructurizr webapp samples/ --no-browser`
+```
+
+> **Security**: like the other viewers, the web app has no authentication
+> and is intended for local use on `127.0.0.1`.
+
 ### Tests
 
 ```bash
