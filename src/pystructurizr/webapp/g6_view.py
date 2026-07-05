@@ -90,45 +90,77 @@ def _ancestry(eid: str, parents: dict[str, str]) -> list[str]:
     return chain
 
 
-def _related_ids(
-    workspace: Workspace,
-    candidates: Iterable[str],
-    scope_id: str,
-    parents: dict[str, str],
-) -> set[str]:
-    """Return the candidate ids related to the scope element.
+def _lift_to(eid: str, allowed: set[str], parents: dict[str, str]) -> str | None:
+    """Return the most specific ancestor of ``eid`` present in ``allowed``."""
+    for ancestor in _ancestry(eid, parents):
+        if ancestor in allowed:
+            return ancestor
+    return None
 
-    A candidate is related when any model relationship connects the
-    candidate (or one of its descendants) with the scope element (or one of
-    its descendants), in either direction.
+
+def _related_peers(
+    workspace: Workspace,
+    scope_id: str,
+    allowed: Iterable[str],
+    parents: dict[str, str],
+    include_scope_level: bool,
+) -> set[str]:
+    """Return peers outside the scope that relate to elements inside it.
+
+    For each relationship crossing the scope boundary, the outside endpoint
+    is lifted to the most specific allowed element and only that element is
+    added — so a relationship declared against a container surfaces that
+    container, not additionally its parent system (which would float
+    unconnected once edges attach to the container).
+
+    Args:
+        workspace: The workspace being rendered.
+        scope_id: The view's subject element.
+        allowed: Ids of elements permitted to appear as peers in this view.
+        parents: Child-to-parent id mapping.
+        include_scope_level: Whether relationships declared against the
+            scope element itself (rather than a descendant) count. True for
+            context views, where the scope is itself a node; False where
+            the scope renders as a boundary and such edges cannot attach.
     """
-    wanted = set(candidates)
-    related: set[str] = set()
+    allowed_set = set(allowed)
+    peers: set[str] = set()
     for rel in workspace.relationships:
-        src = set(_ancestry(rel.source_id, parents))
-        dst = set(_ancestry(rel.destination_id, parents))
-        if scope_id in dst:
-            related.update(wanted & src)
-        if scope_id in src:
-            related.update(wanted & dst)
-    return related
+        endpoints = (
+            (rel.source_id, rel.destination_id),
+            (rel.destination_id, rel.source_id),
+        )
+        for inner, outer in endpoints:
+            if scope_id not in _ancestry(inner, parents):
+                continue
+            if not include_scope_level and inner == scope_id:
+                continue
+            if scope_id in _ancestry(outer, parents):
+                continue
+            lifted = _lift_to(outer, allowed_set, parents)
+            if lifted is not None:
+                peers.add(lifted)
+    return peers
 
 
 def _default_ids(workspace: Workspace, view: View, parents: dict[str, str]) -> set[str]:
     """Return the default visible ids for a view (``include *`` semantics).
 
     Each view type exposes only the elements at its abstraction level; when
-    the view has a scope element, peers are filtered to those related to it.
+    the view has a scope element, peers are those with a relationship into
+    the scope, surfaced at the level the relationship was declared.
     """
     scope = view.element_id
     people = [p.id for p in workspace.people]
     systems = [s.id for s in workspace.software_systems]
 
     if view.type == ViewType.SYSTEM_CONTEXT:
-        peers = people + [sid for sid in systems if sid != scope]
+        allowed = people + [sid for sid in systems if sid != scope]
         if not scope:
-            return set(peers)
-        ids = _related_ids(workspace, peers, scope, parents)
+            return set(allowed)
+        ids = _related_peers(
+            workspace, scope, allowed, parents, include_scope_level=True
+        )
         ids.add(scope)
         return ids
 
@@ -137,29 +169,33 @@ def _default_ids(workspace: Workspace, view: View, parents: dict[str, str]) -> s
         for s in workspace.software_systems:
             if s.id == scope:
                 ids.update(c.id for c in s.containers)
-        peers = people + [sid for sid in systems if sid != scope]
+        allowed = people + [sid for sid in systems if sid != scope]
         if scope:
-            ids |= _related_ids(workspace, peers, scope, parents)
+            ids |= _related_peers(
+                workspace, scope, allowed, parents, include_scope_level=False
+            )
         else:
-            ids.update(peers)
+            ids.update(allowed)
         return ids
 
     if view.type == ViewType.COMPONENT:
         ids = set()
         parent_system_id = parents.get(scope, "")
-        peers = list(people)
+        allowed = list(people)
         for s in workspace.software_systems:
             if s.id != parent_system_id:
-                peers.append(s.id)
+                allowed.append(s.id)
             for c in s.containers:
                 if c.id == scope:
                     ids.update(comp.id for comp in c.components)
                 else:
-                    peers.append(c.id)
+                    allowed.append(c.id)
         if scope:
-            ids |= _related_ids(workspace, peers, scope, parents)
+            ids |= _related_peers(
+                workspace, scope, allowed, parents, include_scope_level=False
+            )
         else:
-            ids.update(peers)
+            ids.update(allowed)
         return ids
 
     return set()

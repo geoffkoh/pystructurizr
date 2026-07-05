@@ -38,6 +38,25 @@ def test_files_lists_fixture(client: TestClient) -> None:
     assert "example.dsl" in response.json()
 
 
+def test_files_hides_include_fragments(root: Path) -> None:
+    split = Path(__file__).parent.parent / "fixtures" / "split_workspace"
+    shutil.copytree(split, root / "split_workspace")
+    client = TestClient(create_app(root=root))
+    files = client.get("/api/files").json()
+    assert "split_workspace/workspace.dsl" in files
+    # Fragment files without a workspace block are not offered for loading.
+    assert not any("model/" in f for f in files)
+
+
+def test_load_split_workspace_resolves_includes(root: Path) -> None:
+    split = Path(__file__).parent.parent / "fixtures" / "split_workspace"
+    shutil.copytree(split, root / "split_workspace")
+    client = TestClient(create_app(root=root))
+    response = client.post("/api/load", json={"path": "split_workspace/workspace.dsl"})
+    assert response.status_code == 200
+    assert response.json()["name"] == "Split Workspace"
+
+
 def test_load_then_workspace_has_software_systems(client: TestClient) -> None:
     _load(client)
     response = client.get("/api/workspace")

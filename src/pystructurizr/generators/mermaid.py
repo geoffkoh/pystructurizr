@@ -58,7 +58,7 @@ class MermaidGenerator:
         ws = self.workspace
         lines: list[str] = ["C4Context"]
         title = view.title or f"System Context – {view.element_id}"
-        lines.append(f'    title {_q(title)}')
+        lines.append(f"    title {_q(title)}")
         lines.append("")
 
         visible_ids = self._visible_ids(view)
@@ -93,7 +93,7 @@ class MermaidGenerator:
         subject = ws.find_element(view.element_id)
         subject_name = subject.name if subject else view.element_id
         title = view.title or f"Container Diagram – {subject_name}"
-        lines.append(f'    title {_q(title)}')
+        lines.append(f"    title {_q(title)}")
         lines.append("")
 
         visible_ids = self._visible_ids(view)
@@ -107,10 +107,16 @@ class MermaidGenerator:
 
         for system in ws.software_systems:
             if system.id == view.element_id:
-                lines.append(f'    System_Boundary({_safe_id(system.id)}, "{_q(system.name)}") {{')
+                lines.append(
+                    f'    System_Boundary({_safe_id(system.id)}, "{_q(system.name)}") {{'
+                )
                 for container in system.containers:
                     if container.id in visible_ids or view.include_all:
-                        tech = f", {_q(container.technology)}" if container.technology else ', ""'
+                        tech = (
+                            f", {_q(container.technology)}"
+                            if container.technology
+                            else ', ""'
+                        )
                         lines.append(
                             f'        Container({_safe_id(container.id)}, "{_q(container.name)}"{tech}, "{_q(container.description)}")'
                         )
@@ -142,7 +148,7 @@ class MermaidGenerator:
         subject = ws.find_element(view.element_id)
         subject_name = subject.name if subject else view.element_id
         title = view.title or f"Component Diagram – {subject_name}"
-        lines.append(f'    title {_q(title)}')
+        lines.append(f"    title {_q(title)}")
         lines.append("")
 
         visible_ids = self._visible_ids(view)
@@ -156,7 +162,9 @@ class MermaidGenerator:
                     break
 
         if container:
-            lines.append(f'    Container_Boundary({_safe_id(container.id)}, "{_q(container.name)}") {{')
+            lines.append(
+                f'    Container_Boundary({_safe_id(container.id)}, "{_q(container.name)}") {{'
+            )
             for comp in container.components:
                 if comp.id in visible_ids or view.include_all:
                     tech = f", {_q(comp.technology)}" if comp.technology else ', ""'

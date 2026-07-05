@@ -22,6 +22,24 @@ import { ElementNode, type ElementNodeData } from "./ElementNode";
 
 const NODE_TYPES: NodeTypes = { element: ElementNode, boundary: BoundaryNode };
 
+/** Relationship line routing, mapped onto React Flow's built-in edge types. */
+type EdgeStyle = "default" | "step" | "smoothstep";
+
+const EDGE_STYLES: { value: EdgeStyle; label: string }[] = [
+  { value: "default", label: "Bezier" },
+  { value: "step", label: "Step" },
+  { value: "smoothstep", label: "Smooth step" },
+];
+
+const EDGE_STYLE_STORAGE_KEY = "pystructurizr.edgeStyle";
+
+function storedEdgeStyle(): EdgeStyle {
+  const raw = window.localStorage.getItem(EDGE_STYLE_STORAGE_KEY);
+  return EDGE_STYLES.some((s) => s.value === raw)
+    ? (raw as EdgeStyle)
+    : "default";
+}
+
 interface GraphPaneProps {
   view: ViewInfo | null;
   views: ViewInfo[];
@@ -92,6 +110,19 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
+  const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(storedEdgeStyle);
+
+  const handleEdgeStyle = useCallback((style: EdgeStyle) => {
+    setEdgeStyle(style);
+    window.localStorage.setItem(EDGE_STYLE_STORAGE_KEY, style);
+  }, []);
+
+  // Routing is presentation-only, so it is applied on the way into React
+  // Flow rather than baked into the edge state.
+  const styledEdges = useMemo(
+    () => edges.map((edge) => ({ ...edge, type: edgeStyle })),
+    [edges, edgeStyle],
+  );
 
   useEffect(() => {
     if (!view || !view.supported) {
@@ -199,7 +230,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
       <ReactFlow
         key={fitKey}
         nodes={nodes}
-        edges={edges}
+        edges={styledEdges}
         nodeTypes={NODE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -229,6 +260,21 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
             ))}
           </Panel>
         ) : null}
+        <Panel position="top-right" className="edge-style">
+          <span className="edge-style__title">Edges</span>
+          {EDGE_STYLES.map((style) => (
+            <button
+              key={style.value}
+              className={
+                "edge-style__option" +
+                (style.value === edgeStyle ? " edge-style__option--active" : "")
+              }
+              onClick={() => handleEdgeStyle(style.value)}
+            >
+              {style.label}
+            </button>
+          ))}
+        </Panel>
         <Background gap={16} />
         <Controls />
         <MiniMap

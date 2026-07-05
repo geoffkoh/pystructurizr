@@ -37,6 +37,7 @@ from pystructurizr.models import (
 # Tokeniser
 # ---------------------------------------------------------------------------
 
+
 class TokenType(str):
     pass
 
@@ -62,18 +63,18 @@ class Token:
 
 
 _TOKEN_RE = re.compile(
-    r'(?P<COMMENT>//[^\n]*)|'
-    r'(?P<BLOCK_COMMENT>/\*.*?\*/)|'
+    r"(?P<COMMENT>//[^\n]*)|"
+    r"(?P<BLOCK_COMMENT>/\*.*?\*/)|"
     r'(?P<STRING>"(?:[^"\\]|\\.)*")|'
-    r'(?P<ARROW>->)|'
-    r'(?P<EQUALS>=)|'
-    r'(?P<LBRACE>\{)|'
-    r'(?P<RBRACE>\})|'
-    r'(?P<BANG>!)|'
-    r'(?P<WILDCARD>\*)|'
-    r'(?P<NEWLINE>\n)|'
-    r'(?P<IDENT>[A-Za-z_][A-Za-z0-9_]*)|'
-    r'(?P<SKIP>[ \t\r]+)',
+    r"(?P<ARROW>->)|"
+    r"(?P<EQUALS>=)|"
+    r"(?P<LBRACE>\{)|"
+    r"(?P<RBRACE>\})|"
+    r"(?P<BANG>!)|"
+    r"(?P<WILDCARD>\*)|"
+    r"(?P<NEWLINE>\n)|"
+    r"(?P<IDENT>[A-Za-z_][A-Za-z0-9_]*)|"
+    r"(?P<SKIP>[ \t\r]+)",
     re.DOTALL,
 )
 
@@ -96,6 +97,7 @@ def _tokenize(text: str) -> list[Token]:
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
+
 
 class ParseError(Exception):
     pass
@@ -120,7 +122,9 @@ class _Parser:
     def _expect(self, type_: str) -> Token:
         tok = self._advance()
         if tok.type != type_:
-            raise ParseError(f"Line {tok.line}: expected {type_}, got {tok.type!r} ({tok.value!r})")
+            raise ParseError(
+                f"Line {tok.line}: expected {type_}, got {tok.type!r} ({tok.value!r})"
+            )
         return tok
 
     def _match(self, *types: str) -> bool:
@@ -198,7 +202,9 @@ class _Parser:
     def _expect_keyword(self, kw: str) -> None:
         tok = self._advance()
         if tok.type != IDENT or tok.value.lower() != kw:
-            raise ParseError(f"Line {tok.line}: expected keyword '{kw}', got {tok.value!r}")
+            raise ParseError(
+                f"Line {tok.line}: expected keyword '{kw}', got {tok.value!r}"
+            )
 
     def _parse_model(self, ws: Workspace) -> None:
         self._advance()  # consume 'model'
@@ -225,9 +231,16 @@ class _Parser:
         # keyword elements without alias
         if tok.type == IDENT:
             kw = tok.value.lower()
-            if kw in ("person", "softwaresystem", "container", "component",
-                      "deploymentnode", "infrastructurenode",
-                      "softwaresysteminstance", "containerinstance"):
+            if kw in (
+                "person",
+                "softwaresystem",
+                "container",
+                "component",
+                "deploymentnode",
+                "infrastructurenode",
+                "softwaresysteminstance",
+                "containerinstance",
+            ):
                 self._parse_element(ws, alias=None, parent_id=parent_id)
                 return
             if kw == "enterprise":
@@ -252,11 +265,17 @@ class _Parser:
             and self._tokens[self._pos + 1].type == EQUALS
         )
 
-    def _parse_element(self, ws: Workspace, alias: str | None, parent_id: str | None) -> None:
+    def _parse_element(
+        self, ws: Workspace, alias: str | None, parent_id: str | None
+    ) -> None:
         kw = self._advance().value.lower()
         name = self._optional_string()
         description = self._optional_string()
-        technology = self._optional_string() if kw in ("container", "component", "deploymentnode", "infrastructurenode") else ""
+        technology = (
+            self._optional_string()
+            if kw in ("container", "component", "deploymentnode", "infrastructurenode")
+            else ""
+        )
         tags_str = self._optional_string()
         tags = [t.strip() for t in tags_str.split(",")] if tags_str else []
 
@@ -264,13 +283,25 @@ class _Parser:
 
         if kw == "person":
             location = Location.EXTERNAL if "External" in tags else Location.UNSPECIFIED
-            elem = Person(id=elem_id, name=name, description=description, tags=tags, location=location)
+            elem = Person(
+                id=elem_id,
+                name=name,
+                description=description,
+                tags=tags,
+                location=location,
+            )
             ws.people.append(elem)
             if alias:
                 self._id_map[alias] = elem_id
         elif kw == "softwaresystem":
             location = Location.EXTERNAL if "External" in tags else Location.UNSPECIFIED
-            elem = SoftwareSystem(id=elem_id, name=name, description=description, tags=tags, location=location)
+            elem = SoftwareSystem(
+                id=elem_id,
+                name=name,
+                description=description,
+                tags=tags,
+                location=location,
+            )
             ws.software_systems.append(elem)
             if alias:
                 self._id_map[alias] = elem_id
@@ -279,7 +310,14 @@ class _Parser:
         elif kw == "container":
             system = self._find_system(ws, parent_id)
             if system is not None:
-                c = Container(id=elem_id, name=name, description=description, technology=technology, tags=tags, parent_id=system.id)
+                c = Container(
+                    id=elem_id,
+                    name=name,
+                    description=description,
+                    technology=technology,
+                    tags=tags,
+                    parent_id=system.id,
+                )
                 system.containers.append(c)
                 if alias:
                     self._id_map[alias] = elem_id
@@ -288,7 +326,14 @@ class _Parser:
         elif kw == "component":
             container = self._find_container(ws, parent_id)
             if container is not None:
-                comp = Component(id=elem_id, name=name, description=description, technology=technology, tags=tags, parent_id=container.id)
+                comp = Component(
+                    id=elem_id,
+                    name=name,
+                    description=description,
+                    technology=technology,
+                    tags=tags,
+                    parent_id=container.id,
+                )
                 container.components.append(comp)
                 if alias:
                     self._id_map[alias] = elem_id
@@ -297,7 +342,11 @@ class _Parser:
         elif kw == "deploymentnode":
             parent_node = self._find_deployment_node(ws, parent_id)
             node = DeploymentNode(
-                id=elem_id, name=name, description=description, technology=technology, tags=tags,
+                id=elem_id,
+                name=name,
+                description=description,
+                technology=technology,
+                tags=tags,
                 parent_id=parent_node.id if parent_node is not None else "",
             )
             if parent_node is not None:
@@ -311,7 +360,11 @@ class _Parser:
         elif kw == "infrastructurenode":
             parent_node = self._find_deployment_node(ws, parent_id)
             infra = InfrastructureNode(
-                id=elem_id, name=name, description=description, technology=technology, tags=tags,
+                id=elem_id,
+                name=name,
+                description=description,
+                technology=technology,
+                tags=tags,
                 parent_id=parent_node.id if parent_node is not None else "",
             )
             if parent_node is not None:
@@ -337,7 +390,9 @@ class _Parser:
             if alias:
                 self._id_map[alias] = elem_id
 
-    def _parse_software_system_body(self, ws: Workspace, system: SoftwareSystem) -> None:
+    def _parse_software_system_body(
+        self, ws: Workspace, system: SoftwareSystem
+    ) -> None:
         self._expect(LBRACE)
         while not self._match(RBRACE, EOF):
             tok = self._peek()
@@ -412,8 +467,12 @@ class _Parser:
                 self._parse_element(ws, alias=alias, parent_id=node.id)
             elif tok.type == IDENT:
                 kw = tok.value.lower()
-                if kw in ("deploymentnode", "infrastructurenode",
-                          "softwaresysteminstance", "containerinstance"):
+                if kw in (
+                    "deploymentnode",
+                    "infrastructurenode",
+                    "softwaresysteminstance",
+                    "containerinstance",
+                ):
                     self._parse_element(ws, alias=None, parent_id=node.id)
                 else:
                     self._advance()
@@ -459,7 +518,14 @@ class _Parser:
                 ws.views.append(self._parse_view(ViewType.DYNAMIC))
             elif kw == "deployment":
                 ws.views.append(self._parse_view(ViewType.DEPLOYMENT))
-            elif kw in ("filtered", "theme", "themes", "styles", "branding", "terminology"):
+            elif kw in (
+                "filtered",
+                "theme",
+                "themes",
+                "styles",
+                "branding",
+                "terminology",
+            ):
                 self._advance()
                 self._optional_string()
                 if self._match(LBRACE):
@@ -481,7 +547,13 @@ class _Parser:
             key = self._advance().value.strip('"')
         title = self._optional_string()
         description = self._optional_string()
-        view = View(type=view_type, key=key or element_id, element_id=element_id, title=title, description=description)
+        view = View(
+            type=view_type,
+            key=key or element_id,
+            element_id=element_id,
+            title=title,
+            description=description,
+        )
         if self._match(LBRACE):
             self._expect(LBRACE)
             while not self._match(RBRACE, EOF):
@@ -518,7 +590,9 @@ class _Parser:
                     "leftright": RankDirection.LEFT_RIGHT,
                     "rightleft": RankDirection.RIGHT_LEFT,
                 }
-                rank_dir = _RANK_DIRECTION_MAP.get(direction_str, RankDirection.TOP_BOTTOM)
+                rank_dir = _RANK_DIRECTION_MAP.get(
+                    direction_str, RankDirection.TOP_BOTTOM
+                )
                 self._optional_string()  # rank separation (ignored for now)
                 view.auto_layout = AutomaticLayout(rank_direction=rank_dir)
                 return
@@ -547,12 +621,16 @@ class _Parser:
             elif tok.type == RBRACE:
                 depth -= 1
 
-    def _find_deployment_node(self, ws: Workspace, parent_id: str | None) -> DeploymentNode | None:
+    def _find_deployment_node(
+        self, ws: Workspace, parent_id: str | None
+    ) -> DeploymentNode | None:
         if parent_id is None:
             return None
         return _search_deployment_nodes(ws.deployment_nodes, parent_id)
 
-    def _find_system(self, ws: Workspace, parent_id: str | None) -> SoftwareSystem | None:
+    def _find_system(
+        self, ws: Workspace, parent_id: str | None
+    ) -> SoftwareSystem | None:
         if parent_id is None:
             return None
         for s in ws.software_systems:
@@ -570,7 +648,9 @@ class _Parser:
         return None
 
 
-def _search_deployment_nodes(nodes: list[DeploymentNode], target_id: str) -> DeploymentNode | None:
+def _search_deployment_nodes(
+    nodes: list[DeploymentNode], target_id: str
+) -> DeploymentNode | None:
     for node in nodes:
         if node.id == target_id:
             return node
@@ -580,12 +660,71 @@ def _search_deployment_nodes(nodes: list[DeploymentNode], target_id: str) -> Dep
     return None
 
 
-def parse_dsl(source: str) -> Workspace:
-    """Parse a Structurizr DSL string and return a Workspace."""
-    tokens = _tokenize(source)
+# ---------------------------------------------------------------------------
+# !include preprocessing
+# ---------------------------------------------------------------------------
+
+_INCLUDE_RE = re.compile(
+    r'^[ \t]*!include[ \t]+(?P<target>"[^"]+"|\S+)[ \t]*$', re.MULTILINE
+)
+
+
+def _expand_includes(
+    source: str, base_dir: Path | None, stack: tuple[Path, ...]
+) -> str:
+    """Replace ``!include <path>`` lines with the referenced file contents.
+
+    Paths are resolved relative to the including file's directory and may
+    themselves contain further includes. Used before tokenising so the
+    parser only ever sees a single flattened source.
+
+    Args:
+        source: DSL text possibly containing ``!include`` lines.
+        base_dir: Directory relative paths resolve against; ``None`` when
+            parsing a bare string, in which case any ``!include`` is an
+            error.
+        stack: Chain of files already being expanded, for cycle detection.
+
+    Raises:
+        ParseError: If there is no file context, the target does not exist,
+            or the includes form a cycle.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        target = match.group("target").strip('"')
+        if base_dir is None:
+            raise ParseError(
+                f"!include {target!r} requires a file context; "
+                "parse from a file instead of a string"
+            )
+        included = (base_dir / target).resolve()
+        if included in stack:
+            chain = " -> ".join(str(p) for p in (*stack, included))
+            raise ParseError(f"Circular !include: {chain}")
+        if not included.is_file():
+            raise ParseError(f"!include target not found: {included}")
+        text = included.read_text(encoding="utf-8")
+        return _expand_includes(text, included.parent, (*stack, included))
+
+    return _INCLUDE_RE.sub(replace, source)
+
+
+def parse_dsl(source: str, base_dir: str | Path | None = None) -> Workspace:
+    """Parse a Structurizr DSL string and return a Workspace.
+
+    Args:
+        source: The DSL text.
+        base_dir: Directory that ``!include`` paths resolve against. When
+            ``None`` (parsing a bare string), ``!include`` raises
+            :class:`ParseError`.
+    """
+    resolved = Path(base_dir).resolve() if base_dir is not None else None
+    flattened = _expand_includes(source, resolved, ())
+    tokens = _tokenize(flattened)
     return _Parser(tokens).parse()
 
 
 def parse_dsl_file(path: str | Path) -> Workspace:
-    """Read a .dsl file and parse it."""
-    return parse_dsl(Path(path).read_text(encoding="utf-8"))
+    """Read a .dsl file and parse it, resolving any ``!include`` directives."""
+    path = Path(path).resolve()
+    return parse_dsl(path.read_text(encoding="utf-8"), base_dir=path.parent)
