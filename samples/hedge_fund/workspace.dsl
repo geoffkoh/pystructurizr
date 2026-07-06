@@ -61,5 +61,19 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
             include *
             autoLayout
         }
+
+        styles {
+            element "Person" {
+                background #08427b
+                shape Person
+            }
+            element "External System" {
+                background #8a94a6
+                color #ffffff
+            }
+            element "Database" {
+                shape Cylinder
+            }
+        }
     }
 }

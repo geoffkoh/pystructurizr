@@ -126,6 +126,81 @@ def test_include_without_file_context_raises():
         parse_dsl('workspace "W" { model {\n!include other.dsl\n} }')
 
 
+def test_styles_block_parses_element_and_relationship_rules():
+    dsl = """
+    workspace {
+        model {
+            u = person "User"
+            s = softwareSystem "System" "" "Database"
+            u -> s "Uses"
+        }
+        views {
+            systemContext s "ctx" {
+                include *
+            }
+            styles {
+                element "Person" {
+                    background #08427b
+                    color "#ffffff"
+                    shape Person
+                    fontSize 22
+                }
+                element "Database" {
+                    shape Cylinder
+                }
+                relationship "Relationship" {
+                    color #707070
+                    dashed false
+                    thickness 2
+                }
+            }
+        }
+    }
+    """
+    ws = parse_dsl(dsl)
+    styles = ws.views.configuration.styles
+    assert len(styles.element_styles) == 2
+    person = styles.element_styles[0]
+    assert person.tag == "Person"
+    assert person.background == "#08427b"
+    assert person.color == "#ffffff"
+    assert person.shape is not None and person.shape.value == "Person"
+    assert person.font_size == 22
+    database = styles.element_styles[1]
+    assert database.shape is not None and database.shape.value == "Cylinder"
+    rel = styles.relationship_styles[0]
+    assert rel.color == "#707070"
+    assert rel.dashed is False
+    assert rel.thickness == 2
+    # The rest of the views block still parsed correctly.
+    assert len(ws.views) == 1
+
+
+def test_styles_block_skips_unknown_properties():
+    dsl = """
+    workspace {
+        model {
+            u = person "User"
+            s = softwareSystem "System"
+            u -> s "Uses"
+        }
+        views {
+            systemContext s "ctx" {
+                include *
+            }
+            styles {
+                element "Person" {
+                    unknownThing whatever
+                    background #123456
+                }
+            }
+        }
+    }
+    """
+    ws = parse_dsl(dsl)
+    assert ws.views.configuration.styles.element_styles[0].background == "#123456"
+
+
 def test_relationship_technology():
     dsl = """
     workspace {

@@ -44,6 +44,11 @@ export interface GNode {
     tags: string[];
     /** On boundary nodes: what the boundary is (e.g. "Deployment Node"). */
     boundaryLabel?: string;
+    /** Tag-based style overrides (DSL styles block), when defined. */
+    background?: string;
+    textColor?: string;
+    /** Structurizr shape name, e.g. "Cylinder", "Box", "Person". */
+    shape?: string;
     /** On containers that can be expanded in place (container views). */
     expandable?: boolean;
     /** On boundary nodes produced by expanding a container. */

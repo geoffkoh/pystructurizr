@@ -14,5 +14,5 @@ ems = softwareSystem "Execution Management System" "Algorithmic execution, smart
     sor        = container "Smart Order Router" "Venue selection and child-order slicing" "C++"
     fixGateway = container "FIX Gateway" "Session management for broker and venue FIX connectivity" "C++, QuickFIX"
     tca        = container "TCA Service" "Post-trade transaction cost analysis and benchmarking" "Python"
-    execStore  = container "Execution Store" "Child orders, routes and executions" "PostgreSQL"
+    execStore  = container "Execution Store" "Child orders, routes and executions" "PostgreSQL" "Database"
 }

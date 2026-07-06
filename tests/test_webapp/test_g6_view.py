@@ -343,6 +343,64 @@ class TestContainerExpansion:
         assert [n["id"] for n in plain["nodes"]] == [n["id"] for n in expanded["nodes"]]
 
 
+class TestTagBasedStyles:
+    @pytest.fixture
+    def styled_workspace(self, tmp_path: Path) -> Workspace:
+        dsl = """
+        workspace "Styled" {
+            model {
+                u = person "User"
+                s = softwareSystem "Shop" {
+                    web = container "Web" "" "React"
+                    db = container "DB" "" "PostgreSQL" "Database"
+                }
+                u -> web "Uses"
+                web -> db "Reads"
+            }
+            views {
+                container s Containers {
+                    include *
+                }
+                styles {
+                    element "Person" {
+                        background #08427b
+                        color #ffffff
+                    }
+                    element "Database" {
+                        shape Cylinder
+                        background #2e7d32
+                    }
+                }
+            }
+        }
+        """
+        path = tmp_path / "styled.dsl"
+        path.write_text(dsl, encoding="utf-8")
+        return parse_dsl_file(path)
+
+    def test_styles_overlay_matching_nodes(self, styled_workspace: Workspace) -> None:
+        view = styled_workspace.views[0]
+        data = to_g6_data(styled_workspace, view)
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["u"]["data"]["background"] == "#08427b"
+        assert by_id["u"]["data"]["textColor"] == "#ffffff"
+        assert by_id["db"]["data"]["shape"] == "Cylinder"
+        assert by_id["db"]["data"]["background"] == "#2e7d32"
+        # Unstyled elements carry no overrides.
+        assert "background" not in by_id["web"]["data"]
+        assert "shape" not in by_id["web"]["data"]
+
+    def test_view_graph_prefers_style_background_over_palette(
+        self, styled_workspace: Workspace
+    ) -> None:
+        from pystructurizr.webapp.graph import view_graph
+
+        data = view_graph(styled_workspace, styled_workspace.views[0])
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["db"]["data"]["color"] == "#2e7d32"
+        assert by_id["web"]["data"]["color"] == "#43a047"  # palette fallback
+
+
 def test_apply_positions_round_trip(workspace: Workspace) -> None:
     view = workspace.views[0]
     # Pick two visible node ids from the generated graph so the test does

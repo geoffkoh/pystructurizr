@@ -14,5 +14,5 @@ oms = softwareSystem "Order Management System" "Order lifecycle from portfolio d
 
     complianceEngine = container "Compliance Engine" "Pre- and post-trade rule evaluation against mandates and restricted lists" "Java, Drools"
     positionSvc      = container "Position Service" "Real-time positions and cash built from fills and settlements" "Kotlin"
-    omsDb            = container "OMS Database" "Orders, fills, allocations and audit history" "PostgreSQL"
+    omsDb            = container "OMS Database" "Orders, fills, allocations and audit history" "PostgreSQL" "Database"
 }
