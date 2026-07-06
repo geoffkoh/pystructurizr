@@ -22,18 +22,22 @@ positionSvc  -> omsDb "Builds positions from fills in" "JDBC"
 validator    -> refData "Resolves instruments against" "gRPC"
 
 // --- OMS to EMS order flow, and fills back ---
-lifecycle  -> algoEngine "Stages parent orders to" "FIX 4.4"
+lifecycle  -> parentOrders "Stages parent orders to" "FIX 4.4"
 fixGateway -> lifecycle "Reports fills and order status to" "FIX 4.4"
 
 // --- Execution internals ---
-execUi     -> algoEngine "Controls algo parameters in"
-algoEngine -> sor "Slices child orders through"
-sor        -> fixGateway "Routes child orders via"
-fixGateway -> execStore "Journals routes and executions to"
-algoEngine -> mdBus "Consumes real-time prices from"
-sor        -> mdBus "Consumes venue liquidity signals from"
-tca        -> execStore "Analyses executions from"
-tca        -> tickStore "Benchmarks against market history in"
+execUi       -> algoEngine "Controls algo parameters in"
+parentOrders -> scheduler "Requests slice schedules from"
+scheduler    -> mdAdapter "Sources volume curves and quotes from"
+scheduler    -> childOrders "Feeds slices to"
+childOrders  -> riskGate "Validates child orders with"
+riskGate     -> sor "Releases child orders to"
+mdAdapter    -> mdBus "Subscribes to normalised ticks from" "Aeron"
+sor          -> fixGateway "Routes child orders via"
+fixGateway   -> execStore "Journals routes and executions to"
+sor          -> mdBus "Consumes venue liquidity signals from"
+tca          -> execStore "Analyses executions from"
+tca          -> tickStore "Benchmarks against market history in"
 
 // --- Market data flow ---
 feedHandler -> vendorData "Subscribes to real-time feeds from"

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type MouseEvent } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 /** Colour used when the backend supplies no palette colour for a kind. */
@@ -12,6 +12,9 @@ const KIND_LABELS: Record<string, string> = {
   "system-external": "Software System",
   container: "Container",
   component: "Component",
+  infrastructure: "Infrastructure Node",
+  "container-instance": "Container",
+  "system-instance": "Software System",
 };
 
 export interface ElementNodeData {
@@ -25,6 +28,10 @@ export interface ElementNodeData {
   drillKey?: string;
   /** Label of the drill target, used for the hover hint. */
   drillLabel?: string;
+  /** Whether this container can be expanded in place. */
+  expandable?: boolean;
+  /** Callback wired by the graph pane to expand/collapse this node. */
+  onToggleExpand?: (id: string, expand: boolean) => void;
 }
 
 function metaLine(data: ElementNodeData): string {
@@ -36,12 +43,19 @@ function metaLine(data: ElementNodeData): string {
  * Custom React Flow node coloured by its element kind. People render with
  * the conventional C4 silhouette (head circle above the box); all elements
  * show their `[Kind: technology]` metadata and description. Nodes with a
- * drill target show an affordance and open it on double-click.
+ * drill target open it on double-click; expandable containers show a ＋
+ * control that expands them in place.
  */
-function ElementNodeComponent({ data }: NodeProps<ElementNodeData>) {
+function ElementNodeComponent({ id, data }: NodeProps<ElementNodeData>) {
   const background = data.color ?? FALLBACK_COLOR;
   const isPerson = data.kind.startsWith("person");
   const drillable = Boolean(data.drillKey);
+  const expandable = Boolean(data.expandable && data.onToggleExpand);
+
+  const handleExpand = (event: MouseEvent) => {
+    event.stopPropagation();
+    data.onToggleExpand?.(id, true);
+  };
 
   const box = (
     <div
@@ -62,6 +76,16 @@ function ElementNodeComponent({ data }: NodeProps<ElementNodeData>) {
         <div className="node__desc">{data.description}</div>
       ) : null}
       {drillable ? <div className="node__drill">⊕</div> : null}
+      {expandable ? (
+        <button
+          className="node__expand"
+          title="Expand components in place"
+          onClick={handleExpand}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          ＋
+        </button>
+      ) : null}
       <Handle type="source" position={Position.Bottom} />
     </div>
   );

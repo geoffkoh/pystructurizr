@@ -8,6 +8,7 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   type Edge,
+  type EdgeTypes,
   type Node,
   type NodeTypes,
 } from "reactflow";
@@ -19,14 +20,17 @@ import { buildTrail, crumbLabel, drillTarget } from "../navigation";
 import type { GraphData, ViewInfo, Workspace } from "../types";
 import { BoundaryNode } from "./BoundaryNode";
 import { ElementNode, type ElementNodeData } from "./ElementNode";
+import { FloatingEdge, type FloatingEdgeData } from "./FloatingEdge";
 
 const NODE_TYPES: NodeTypes = { element: ElementNode, boundary: BoundaryNode };
+const EDGE_TYPES: EdgeTypes = { floating: FloatingEdge };
 
-/** Relationship line routing, mapped onto React Flow's built-in edge types. */
-type EdgeStyle = "default" | "step" | "smoothstep";
+/** Relationship line routing, rendered by the floating edge. */
+type EdgeStyle = "default" | "straight" | "step" | "smoothstep";
 
 const EDGE_STYLES: { value: EdgeStyle; label: string }[] = [
   { value: "default", label: "Bezier" },
+  { value: "straight", label: "Straight" },
   { value: "step", label: "Step" },
   { value: "smoothstep", label: "Smooth step" },
 ];
@@ -53,6 +57,7 @@ function toFlow(
   view: ViewInfo,
   views: ViewInfo[],
   workspace: Workspace | null,
+  onToggleExpand: (id: string, expand: boolean) => void,
 ): { nodes: Node[]; edges: Edge[] } {
   const anyMissingPosition = data.nodes.some((n) => n.position === undefined);
   const trail = buildTrail(view, views, workspace);
@@ -62,8 +67,11 @@ function toFlow(
 
   const nodes: Node[] = data.nodes.map((n) => {
     const isBoundary = n.data.kind === "boundary";
-    // Boundaries drill out to the parent view; systems/containers drill in.
-    const target = isBoundary ? parentView : drillTarget(n, views);
+    // Only the view's own (root) boundary drills out to the parent view;
+    // nested boundaries (expanded containers, deployment nodes) do not.
+    const isRootBoundary = isBoundary && !n.parentId;
+    const target =
+      isRootBoundary && !n.data.expanded ? parentView : drillTarget(n, views);
     return {
       id: n.id,
       type: isBoundary ? "boundary" : "element",
@@ -77,6 +85,7 @@ function toFlow(
         boundaryType,
         drillKey: target?.key,
         drillLabel: target ? crumbLabel(target, workspace) : undefined,
+        onToggleExpand,
       },
     };
   });
@@ -85,7 +94,8 @@ function toFlow(
     id: e.id,
     source: e.source,
     target: e.target,
-    label: e.label || undefined,
+    type: "floating",
+    data: { label: e.label || undefined } satisfies FloatingEdgeData,
     markerEnd: { type: MarkerType.ArrowClosed },
   }));
 
@@ -93,14 +103,15 @@ function toFlow(
   // adapt the stored absolute positions to the nested-node model.
   const positioned = anyMissingPosition
     ? layoutGraph(nodes, edges)
-    : normalizeStoredPositions(nodes);
+    : normalizeStoredPositions(nodes, edges);
   return { nodes: positioned, edges };
 }
 
 /**
- * Renders the selected view's graph with React Flow: nested C4 boundaries,
- * draggable nodes, zoom/pan, a breadcrumb for drill in/out navigation,
- * controls and a minimap. Falls back to friendly notices for
+ * Renders the selected view's graph with React Flow: nested C4 boundaries
+ * (to any depth — deployment nodes, expanded containers), centre-anchored
+ * floating edges, draggable nodes, zoom/pan, a breadcrumb for drill in/out
+ * navigation, controls and a minimap. Falls back to friendly notices for
  * unsupported/empty views and load errors.
  */
 export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps) {
@@ -111,16 +122,42 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   );
   const [error, setError] = useState<string | null>(null);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(storedEdgeStyle);
+  // Expanded container ids, scoped to the view they were expanded in so a
+  // view switch implicitly resets the expansion.
+  const [expansion, setExpansion] = useState<{ key: string; ids: string[] }>({
+    key: "",
+    ids: [],
+  });
+  const expandedIds = useMemo(
+    () => (view && expansion.key === view.key ? expansion.ids : []),
+    [view, expansion],
+  );
 
   const handleEdgeStyle = useCallback((style: EdgeStyle) => {
     setEdgeStyle(style);
     window.localStorage.setItem(EDGE_STYLE_STORAGE_KEY, style);
   }, []);
 
+  const handleToggleExpand = useCallback(
+    (id: string, expand: boolean) => {
+      if (!view) return;
+      setExpansion((prev) => {
+        const ids = prev.key === view.key ? prev.ids : [];
+        const next = expand ? [...ids, id] : ids.filter((x) => x !== id);
+        return { key: view.key, ids: next };
+      });
+    },
+    [view],
+  );
+
   // Routing is presentation-only, so it is applied on the way into React
   // Flow rather than baked into the edge state.
   const styledEdges = useMemo(
-    () => edges.map((edge) => ({ ...edge, type: edgeStyle })),
+    () =>
+      edges.map((edge) => ({
+        ...edge,
+        data: { ...edge.data, pathStyle: edgeStyle },
+      })),
     [edges, edgeStyle],
   );
 
@@ -137,10 +174,10 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     setStatus("loading");
     setError(null);
 
-    getViewGraph(view.key)
+    getViewGraph(view.key, expandedIds)
       .then((data) => {
         if (cancelled) return;
-        const flow = toFlow(data, view, views, workspace);
+        const flow = toFlow(data, view, views, workspace, handleToggleExpand);
         setNodes(flow.nodes);
         setEdges(flow.edges);
         setStatus("ready");
@@ -156,7 +193,15 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     return () => {
       cancelled = true;
     };
-  }, [view, views, workspace, setNodes, setEdges]);
+  }, [
+    view,
+    views,
+    workspace,
+    expandedIds,
+    handleToggleExpand,
+    setNodes,
+    setEdges,
+  ]);
 
   const handleNodeDoubleClick = useCallback(
     (_event: unknown, node: Node) => {
@@ -175,7 +220,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
 
   const isEmpty = status === "ready" && nodes.length === 0;
 
-  // Stable fitView key so the viewport re-fits when the graph changes.
+  // Re-fit the viewport when switching views, but not on expand/collapse.
   const fitKey = useMemo(() => view?.key ?? "none", [view]);
 
   if (!view) {
@@ -193,13 +238,13 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
         <div className="notice__title">This view is not renderable yet</div>
         <p>
           <code>{view.type}</code> views are not supported. Try a system
-          context, container, or component view.
+          context, container, component, or deployment view.
         </p>
       </div>
     );
   }
 
-  if (status === "loading") {
+  if (status === "loading" && nodes.length === 0) {
     return (
       <div className="notice">
         <div className="notice__title">Loading diagram…</div>
@@ -232,6 +277,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
         nodes={nodes}
         edges={styledEdges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}

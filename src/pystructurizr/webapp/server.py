@@ -233,15 +233,21 @@ def create_app(
 
     @app.get("/api/views/{key}/graph")
     def get_view_graph(
-        key: str, state: AppState = Depends(_get_state)
+        key: str, expand: str = "", state: AppState = Depends(_get_state)
     ) -> dict[str, Any]:
-        """Return React Flow graph data for the view with ``key``."""
+        """Return React Flow graph data for the view with ``key``.
+
+        ``expand`` is an optional comma-separated list of container ids to
+        expand in place (container views only).
+        """
         workspace = _require_workspace(state)
-        if key in state.diagrams:
-            return state.diagrams[key]
+        expand_ids = {part for part in expand.split(",") if part}
+        cache_key = f"{key}::{','.join(sorted(expand_ids))}"
+        if cache_key in state.diagrams:
+            return state.diagrams[cache_key]
         view = _find_view(workspace, key)
-        data = graph.view_graph(workspace, view)
-        state.diagrams[key] = data
+        data = graph.view_graph(workspace, view, expand_ids or None)
+        state.diagrams[cache_key] = data
         return data
 
     @app.post("/api/views/{key}/layout")
@@ -252,7 +258,8 @@ def create_app(
         workspace = _require_workspace(state)
         view = _find_view(workspace, key)
         apply_positions(view, dict(body.positions))
-        state.diagrams.pop(key, None)
+        for cached in [k for k in state.diagrams if k.split("::")[0] == key]:
+            state.diagrams.pop(cached)
 
         if state.current_path is not None:
             out_path = state.current_path.with_name(

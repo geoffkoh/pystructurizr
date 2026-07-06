@@ -1,11 +1,12 @@
 // Auto-layout for graphs whose nodes arrive without stored positions.
 //
 // Boundary (group) nodes make this a compound layout, which plain dagre does
-// not support, so it runs in two passes:
-//   1. lay out the children inside each boundary and size the boundary to
-//      their bounding box (plus padding and label space);
-//   2. lay out the top level, treating each boundary as one large node and
-//      re-targeting cross-boundary edges to the boundary itself.
+// not support. It is computed recursively, bottom-up: each group lays out its
+// children (sizing itself to their bounding box plus padding and label
+// space), then participates in its own parent's layout as a single large
+// node. Edges crossing group borders are lifted to the ancestor that lives
+// at the level being laid out. Groups nest to any depth (deployment views,
+// expanded containers).
 
 import dagre from "dagre";
 import type { Edge, Node } from "reactflow";
@@ -72,33 +73,82 @@ function dagreLevel(
   return positions;
 }
 
+/** Parent/child indices over the node list. */
+function buildHierarchy(nodes: Node[]) {
+  const parentOf = new Map<string, string>();
+  const childrenOf = new Map<string | undefined, Node[]>();
+  for (const node of nodes) {
+    if (node.parentNode) parentOf.set(node.id, node.parentNode);
+    const key = node.parentNode ?? undefined;
+    const siblings = childrenOf.get(key) ?? [];
+    siblings.push(node);
+    childrenOf.set(key, siblings);
+  }
+  return { parentOf, childrenOf };
+}
+
 /**
- * Assign positions to all nodes, sizing boundary group nodes to fit their
- * children. Child positions are relative to their parent, as React Flow
- * expects for nested nodes.
+ * The ancestor of `id` that is a direct child of `parentId`, or undefined
+ * when `id` does not live under `parentId` at all.
+ */
+function ancestorAtLevel(
+  id: string,
+  parentId: string | undefined,
+  parentOf: Map<string, string>,
+): string | undefined {
+  let current: string | undefined = id;
+  while (current !== undefined) {
+    const parent = parentOf.get(current);
+    if (parent === parentId || (parent === undefined && parentId === undefined)) {
+      return current;
+    }
+    current = parent;
+  }
+  return undefined;
+}
+
+/**
+ * Assign positions to all nodes, sizing boundary group nodes (at any
+ * nesting depth) to fit their children. Child positions are relative to
+ * their parent, as React Flow expects for nested nodes.
  */
 export function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
-  const childrenOf = new Map<string, Node[]>();
-  for (const node of nodes) {
-    if (node.parentNode) {
-      const siblings = childrenOf.get(node.parentNode) ?? [];
-      siblings.push(node);
-      childrenOf.set(node.parentNode, siblings);
+  const { parentOf, childrenOf } = buildHierarchy(nodes);
+  const positions = new Map<string, Point>();
+  const groupSizes = new Map<string, Size>();
+
+  const sizeOf = (node: Node): Size => groupSizes.get(node.id) ?? nodeSize(node);
+
+  function edgesAtLevel(
+    parentId: string | undefined,
+  ): { source: string; target: string }[] {
+    const seen = new Set<string>();
+    const lifted: { source: string; target: string }[] = [];
+    for (const edge of edges) {
+      const source = ancestorAtLevel(edge.source, parentId, parentOf);
+      const target = ancestorAtLevel(edge.target, parentId, parentOf);
+      if (!source || !target || source === target) continue;
+      const key = `${source}->${target}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lifted.push({ source, target });
     }
+    return lifted;
   }
 
-  const positions = new Map<string, Point>();
-  const boundarySizes = new Map<string, Size>();
+  /** Lay out the children of `parentId`; returns the resulting group size. */
+  function layoutLevel(parentId: string | undefined): Size {
+    const children = childrenOf.get(parentId) ?? [];
+    // Bottom-up: size nested groups before laying out this level.
+    for (const child of children) {
+      if (childrenOf.has(child.id)) {
+        groupSizes.set(child.id, layoutLevel(child.id));
+      }
+    }
 
-  // Pass 1: children inside each boundary, boundary sized to fit.
-  for (const [parentId, children] of childrenOf) {
-    const childIds = new Set(children.map((c) => c.id));
-    const innerEdges = edges.filter(
-      (e) => childIds.has(e.source) && childIds.has(e.target),
-    );
     const laidOut = dagreLevel(
-      children.map((c) => ({ id: c.id, size: nodeSize(c) })),
-      innerEdges,
+      children.map((c) => ({ id: c.id, size: sizeOf(c) })),
+      edgesAtLevel(parentId),
     );
 
     let maxX = 0;
@@ -107,59 +157,35 @@ export function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
     let minY = Number.POSITIVE_INFINITY;
     for (const child of children) {
       const pos = laidOut.get(child.id)!;
-      const size = nodeSize(child);
+      const size = sizeOf(child);
       minX = Math.min(minX, pos.x);
       minY = Math.min(minY, pos.y);
       maxX = Math.max(maxX, pos.x + size.width);
       maxY = Math.max(maxY, pos.y + size.height);
     }
+    if (children.length === 0) {
+      minX = minY = maxX = maxY = 0;
+    }
+
+    // Top level keeps dagre's coordinates; nested levels shift into the
+    // parent's padded interior.
+    const offsetX = parentId === undefined ? 0 : BOUNDARY_PAD_X - minX;
+    const offsetY = parentId === undefined ? 0 : BOUNDARY_PAD_TOP - minY;
     for (const child of children) {
       const pos = laidOut.get(child.id)!;
-      positions.set(child.id, {
-        x: pos.x - minX + BOUNDARY_PAD_X,
-        y: pos.y - minY + BOUNDARY_PAD_TOP,
-      });
+      positions.set(child.id, { x: pos.x + offsetX, y: pos.y + offsetY });
     }
-    boundarySizes.set(parentId, {
+
+    return {
       width: maxX - minX + 2 * BOUNDARY_PAD_X,
       height: maxY - minY + BOUNDARY_PAD_TOP + BOUNDARY_PAD_BOTTOM,
-    });
+    };
   }
 
-  // Pass 2: top level, with boundaries as single large nodes and
-  // cross-boundary edges lifted to the boundary.
-  const parentOf = new Map<string, string>();
-  for (const node of nodes) {
-    if (node.parentNode) parentOf.set(node.id, node.parentNode);
-  }
-  const representative = (id: string) => parentOf.get(id) ?? id;
-
-  const topNodes = nodes.filter((n) => !n.parentNode);
-  const topEdgePairs = new Set<string>();
-  const topEdges: { source: string; target: string }[] = [];
-  for (const edge of edges) {
-    const source = representative(edge.source);
-    const target = representative(edge.target);
-    if (source === target) continue;
-    const key = `${source}->${target}`;
-    if (topEdgePairs.has(key)) continue;
-    topEdgePairs.add(key);
-    topEdges.push({ source, target });
-  }
-
-  const topPositions = dagreLevel(
-    topNodes.map((n) => ({
-      id: n.id,
-      size: boundarySizes.get(n.id) ?? nodeSize(n),
-    })),
-    topEdges,
-  );
-  for (const [id, pos] of topPositions) {
-    positions.set(id, pos);
-  }
+  layoutLevel(undefined);
 
   return nodes.map((node) => {
-    const size = boundarySizes.get(node.id);
+    const size = groupSizes.get(node.id);
     return {
       ...node,
       position: positions.get(node.id) ?? { x: 0, y: 0 },
@@ -172,24 +198,22 @@ export function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
  * Adapt stored (absolute) positions to React Flow's nested-node model.
  *
  * Stored layouts predate boundaries and are absolute; children of a
- * boundary must be positioned relative to it. The boundary is re-derived
- * from its children's bounding box so stored layouts stay valid even
- * though no boundary size was ever persisted.
+ * boundary must be positioned relative to it. Groups are re-derived from
+ * their children's bounding boxes. Multi-level nesting (deployment views)
+ * has no stored layouts in practice, so only one level is handled; deeper
+ * graphs fall back to a fresh auto-layout.
  */
-export function normalizeStoredPositions(nodes: Node[]): Node[] {
-  const childrenOf = new Map<string, Node[]>();
-  for (const node of nodes) {
-    if (node.parentNode) {
-      const siblings = childrenOf.get(node.parentNode) ?? [];
-      siblings.push(node);
-      childrenOf.set(node.parentNode, siblings);
-    }
-  }
-  if (childrenOf.size === 0) return nodes;
+export function normalizeStoredPositions(nodes: Node[], edges: Edge[]): Node[] {
+  const { parentOf, childrenOf } = buildHierarchy(nodes);
+  const multiLevel = nodes.some((n) => {
+    const parent = n.parentNode;
+    return parent !== undefined && parentOf.has(parent);
+  });
+  if (multiLevel) return layoutGraph(nodes, edges);
 
-  const boundaryPositions = new Map<string, Point>();
-  const boundarySizes = new Map<string, Size>();
+  const groups = new Map<string, { position: Point; size: Size }>();
   for (const [parentId, children] of childrenOf) {
+    if (parentId === undefined) continue;
     let maxX = 0;
     let maxY = 0;
     let minX = Number.POSITIVE_INFINITY;
@@ -201,33 +225,33 @@ export function normalizeStoredPositions(nodes: Node[]): Node[] {
       maxX = Math.max(maxX, child.position.x + size.width);
       maxY = Math.max(maxY, child.position.y + size.height);
     }
-    boundaryPositions.set(parentId, {
-      x: minX - BOUNDARY_PAD_X,
-      y: minY - BOUNDARY_PAD_TOP,
-    });
-    boundarySizes.set(parentId, {
-      width: maxX - minX + 2 * BOUNDARY_PAD_X,
-      height: maxY - minY + BOUNDARY_PAD_TOP + BOUNDARY_PAD_BOTTOM,
+    groups.set(parentId, {
+      position: { x: minX - BOUNDARY_PAD_X, y: minY - BOUNDARY_PAD_TOP },
+      size: {
+        width: maxX - minX + 2 * BOUNDARY_PAD_X,
+        height: maxY - minY + BOUNDARY_PAD_TOP + BOUNDARY_PAD_BOTTOM,
+      },
     });
   }
+  if (groups.size === 0) return nodes;
 
   return nodes.map((node) => {
-    const asBoundary = boundaryPositions.get(node.id);
-    if (asBoundary) {
+    const asGroup = groups.get(node.id);
+    if (asGroup) {
       return {
         ...node,
-        position: asBoundary,
-        style: { ...node.style, ...boundarySizes.get(node.id)! },
+        position: asGroup.position,
+        style: { ...node.style, ...asGroup.size },
       };
     }
     if (node.parentNode) {
-      const parent = boundaryPositions.get(node.parentNode);
+      const parent = groups.get(node.parentNode);
       if (parent) {
         return {
           ...node,
           position: {
-            x: node.position.x - parent.x,
-            y: node.position.y - parent.y,
+            x: node.position.x - parent.position.x,
+            y: node.position.y - parent.position.y,
           },
         };
       }

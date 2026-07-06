@@ -318,6 +318,61 @@ button {
   opacity: 0.75;
 }
 
+/* ---- Expand/collapse in place ---- */
+.node__expand {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.node__expand:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.boundary__collapse {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: 1px solid #90a4ae;
+  background: var(--panel);
+  color: #546e7a;
+  font-size: 12px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.boundary__collapse:hover {
+  background: var(--bg);
+}
+
+/* ---- Edge labels (floating edges) ---- */
+.edge-label {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  color: var(--muted);
+  pointer-events: none;
+  max-width: 160px;
+  text-align: center;
+}
+
 /* ---- C4 person silhouette ---- */
 .person {
   display: flex;

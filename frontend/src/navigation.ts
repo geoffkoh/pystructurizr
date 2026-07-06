@@ -11,6 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
   systemContext: "Context",
   container: "Containers",
   component: "Components",
+  deployment: "Deployment",
 };
 
 function findView(
