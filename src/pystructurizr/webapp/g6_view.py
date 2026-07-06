@@ -21,8 +21,10 @@ from typing import Any
 from pystructurizr.models import (
     Component,
     Container,
+    DeploymentNode,
     Location,
     Person,
+    Relationship,
     SoftwareSystem,
     View,
     ViewElement,
@@ -48,6 +50,9 @@ KIND_COLOURS: dict[str, str] = {
     "container": "#43a047",
     "component": "#fb8c00",
     "boundary": "#90a4ae",
+    "infrastructure": "#607d8b",
+    "container-instance": "#43a047",
+    "system-instance": "#1976d2",
 }
 
 
@@ -309,14 +314,193 @@ def _edges(
     return edges
 
 
-def to_g6_data(workspace: Workspace, view: View) -> G6Data:
+def _deployment_data(workspace: Workspace, view: View) -> G6Data:
+    """Build graph data for a deployment view.
+
+    Deployment nodes render as (arbitrarily) nested boundary group nodes;
+    infrastructure nodes and container/system instances are their leaves.
+    Branches containing no instance relevant to the view's scope/environment
+    are pruned. Edges come from relationships declared directly between
+    deployment elements plus relationships derived from the model: when two
+    deployed elements' underlying model elements are related, their
+    instances are too.
+    """
+    env = view.environment
+    scope = view.element_id
+    parents = _parent_ids(workspace)
+    systems = {s.id: s for s in workspace.software_systems}
+    container_system: dict[str, SoftwareSystem] = {}
+    containers: dict[str, Container] = {}
+    for s in workspace.software_systems:
+        for c in s.containers:
+            containers[c.id] = c
+            container_system[c.id] = s
+
+    def relevant_container(inst_container_id: str) -> bool:
+        if not scope:
+            return True
+        s = container_system.get(inst_container_id)
+        return s is not None and s.id == scope
+
+    def relevant_system(system_id: str) -> bool:
+        return not scope or system_id == scope
+
+    def subtree_relevant(dn: DeploymentNode) -> bool:
+        if any(relevant_container(i.container_id) for i in dn.container_instances):
+            return True
+        if any(
+            relevant_system(i.software_system_id) for i in dn.software_system_instances
+        ):
+            return True
+        return any(subtree_relevant(child) for child in dn.children)
+
+    nodes: list[G6Node] = []
+    instance_refs: dict[str, str] = {}  # leaf id -> underlying model element id
+    leaf_ids: set[str] = set()
+
+    def leaf(
+        eid: str,
+        label: str,
+        kind: str,
+        technology: str,
+        description: str,
+        tags: list[str],
+        parent_id: str,
+    ) -> None:
+        nodes.append(
+            {
+                "id": eid,
+                "parentId": parent_id,
+                "data": {
+                    "label": label,
+                    "kind": kind,
+                    "technology": technology,
+                    "description": description,
+                    "tags": tags,
+                },
+            }
+        )
+        leaf_ids.add(eid)
+
+    def emit(dn: DeploymentNode, parent_id: str | None) -> None:
+        if env and dn.environment and dn.environment != env:
+            return
+        if not subtree_relevant(dn):
+            return
+        boundary: G6Node = {
+            "id": dn.id,
+            "data": {
+                "label": dn.name,
+                "kind": "boundary",
+                "technology": dn.technology,
+                "description": dn.description,
+                "tags": list(dn.tags),
+                "boundaryLabel": "Deployment Node",
+            },
+        }
+        if parent_id is not None:
+            boundary["parentId"] = parent_id
+        nodes.append(boundary)
+        for infra in dn.infrastructure_nodes:
+            leaf(
+                infra.id,
+                infra.name,
+                "infrastructure",
+                infra.technology,
+                infra.description,
+                list(infra.tags),
+                dn.id,
+            )
+        for ssi in dn.software_system_instances:
+            if relevant_system(ssi.software_system_id):
+                s = systems.get(ssi.software_system_id)
+                leaf(
+                    ssi.id,
+                    s.name if s else ssi.software_system_id,
+                    "system-instance",
+                    "",
+                    s.description if s else "",
+                    list(ssi.tags),
+                    dn.id,
+                )
+                instance_refs[ssi.id] = ssi.software_system_id
+        for ci in dn.container_instances:
+            if relevant_container(ci.container_id):
+                c = containers.get(ci.container_id)
+                leaf(
+                    ci.id,
+                    c.name if c else ci.container_id,
+                    "container-instance",
+                    c.technology if c else "",
+                    c.description if c else "",
+                    list(ci.tags),
+                    dn.id,
+                )
+                instance_refs[ci.id] = ci.container_id
+        for child in dn.children:
+            emit(child, dn.id)
+
+    for dn in workspace.deployment_nodes:
+        emit(dn, None)
+
+    # Invert instance refs for deriving instance-level edges from the model.
+    ref_instances: dict[str, list[str]] = {}
+    for inst_id, ref_id in instance_refs.items():
+        ref_instances.setdefault(ref_id, []).append(inst_id)
+    ref_ids = set(ref_instances)
+
+    edges: list[G6Edge] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_edge(src: str, dst: str, rel: Relationship) -> None:
+        if src == dst or (src, dst) in seen:
+            return
+        seen.add((src, dst))
+        edges.append(
+            {
+                "id": f"{src}__{dst}__{len(edges)}",
+                "source": src,
+                "target": dst,
+                "data": {"label": rel.description, "technology": rel.technology},
+            }
+        )
+
+    for rel in workspace.relationships:
+        # Relationships declared directly between deployment elements.
+        if rel.source_id in leaf_ids and rel.destination_id in leaf_ids:
+            add_edge(rel.source_id, rel.destination_id, rel)
+            continue
+        # Model relationships replicated onto every pair of instances.
+        src_ref = _lift(rel.source_id, ref_ids, parents)
+        dst_ref = _lift(rel.destination_id, ref_ids, parents)
+        if src_ref is None or dst_ref is None or src_ref == dst_ref:
+            continue
+        for src_inst in ref_instances[src_ref]:
+            for dst_inst in ref_instances[dst_ref]:
+                add_edge(src_inst, dst_inst, rel)
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def to_g6_data(
+    workspace: Workspace, view: View, expand: set[str] | None = None
+) -> G6Data:
     """Return graph data ``{nodes, edges}`` for the given view.
 
-    The boundary group node (when the view has one) is always first in the
-    node list so the frontend can render it behind its children. Stored
-    ViewElement positions are applied when available so previously persisted
-    layouts survive a re-render.
+    Boundary group nodes always precede their children in the node list so
+    the frontend can render parents behind children. Stored ViewElement
+    positions are applied when available so previously persisted layouts
+    survive a re-render.
+
+    Args:
+        workspace: The workspace to render from.
+        view: The view to render.
+        expand: For container views, ids of containers to expand in place —
+            each becomes a nested boundary containing its components.
     """
+    if view.type == ViewType.DEPLOYMENT:
+        return _deployment_data(workspace, view)
+
     parents = _parent_ids(workspace)
     visible = _visible_ids(workspace, view)
     positions: dict[str, tuple[int, int]] = {
@@ -329,6 +513,20 @@ def to_g6_data(workspace: Workspace, view: View) -> G6Data:
         xy = positions.get(eid)
         return xy if xy is not None else (None, None)
 
+    # In container views, requested containers with components expand into
+    # nested boundaries holding their components.
+    expanded: set[str] = set()
+    if expand and view.type == ViewType.CONTAINER:
+        all_containers = {
+            c.id: c for s in workspace.software_systems for c in s.containers
+        }
+        expanded = {
+            cid for cid in expand if cid in visible and all_containers[cid].components
+        }
+        visible -= expanded
+        for cid in expanded:
+            visible.update(comp.id for comp in all_containers[cid].components)
+
     nodes: list[G6Node] = []
 
     boundary_id: str | None = None
@@ -338,10 +536,19 @@ def to_g6_data(workspace: Workspace, view: View) -> G6Data:
         # The scoped element is the boundary, never a leaf peer.
         visible.discard(boundary_id)
         x, y = pos(boundary_id)
-        nodes.append(_node(boundary_id, boundary_element, "boundary", x, y))
+        boundary_node = _node(boundary_id, boundary_element, "boundary", x, y)
+        boundary_node["data"]["boundaryLabel"] = (
+            "Container" if view.type == ViewType.COMPONENT else "Software System"
+        )
+        nodes.append(boundary_node)
 
     def child_of(eid: str) -> str | None:
-        return boundary_id if parents.get(eid) == boundary_id else None
+        parent = parents.get(eid)
+        if parent == boundary_id:
+            return boundary_id
+        if parent in expanded:
+            return parent
+        return None
 
     for p in workspace.people:
         if p.id in visible:
@@ -353,9 +560,18 @@ def to_g6_data(workspace: Workspace, view: View) -> G6Data:
             x, y = pos(s.id)
             nodes.append(_node(s.id, s, _system_kind(s), x, y))
         for c in s.containers:
-            if c.id in visible:
+            if c.id in expanded:
                 x, y = pos(c.id)
-                nodes.append(_node(c.id, c, "container", x, y, child_of(c.id)))
+                group = _node(c.id, c, "boundary", x, y, child_of(c.id))
+                group["data"]["boundaryLabel"] = "Container"
+                group["data"]["expanded"] = True
+                nodes.append(group)
+            elif c.id in visible:
+                x, y = pos(c.id)
+                node = _node(c.id, c, "container", x, y, child_of(c.id))
+                if view.type == ViewType.CONTAINER and c.components:
+                    node["data"]["expandable"] = True
+                nodes.append(node)
             for comp in c.components:
                 if comp.id in visible:
                     x, y = pos(comp.id)

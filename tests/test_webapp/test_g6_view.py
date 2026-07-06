@@ -209,6 +209,140 @@ class TestComponentView:
         }
 
 
+SPLIT_DEPLOY_DSL = """
+workspace "Deploy" {
+    model {
+        u = person "User"
+        s = softwareSystem "Shop" {
+            web = container "Web" "storefront" "React"
+            api = container "API" "backend" "Python" {
+                orders = component "Orders" "order endpoints" "FastAPI"
+                items  = component "Items" "catalogue endpoints" "FastAPI"
+            }
+        }
+        other = softwareSystem "Analytics" {
+            etl = container "ETL" "" "Python"
+        }
+        u -> web "Uses"
+        web -> orders "Calls"
+        orders -> items "Reads"
+        api -> etl "Feeds"
+
+        deploymentEnvironment "Production" {
+            deploymentNode "Cloud" "" "AWS" {
+                deploymentNode "Cluster" "" "EKS" {
+                    webInst = containerInstance web
+                    apiInst = containerInstance api
+                }
+                lb = infrastructureNode "Load Balancer" "" "ALB"
+            }
+            deploymentNode "Warehouse" "" "GCP" {
+                etlInst = containerInstance etl
+            }
+            lb -> webInst "Forwards to"
+        }
+    }
+    views {
+        container s Containers { include * }
+        deployment * "Production" Prod {
+            include *
+        }
+        deployment s "Production" ShopProd {
+            include *
+        }
+    }
+}
+"""
+
+
+class TestDeploymentView:
+    @pytest.fixture
+    def deploy_workspace(self, tmp_path) -> Workspace:
+        path = tmp_path / "deploy.dsl"
+        path.write_text(SPLIT_DEPLOY_DSL, encoding="utf-8")
+        return parse_dsl_file(path)
+
+    def test_nodes_nest_and_instances_take_container_identity(
+        self, deploy_workspace: Workspace
+    ) -> None:
+        view = next(v for v in deploy_workspace.views if v.key == "Prod")
+        data = to_g6_data(deploy_workspace, view)
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["cluster"]["parentId"] == "cloud"
+        assert by_id["webInst"]["parentId"] == "cluster"
+        assert by_id["webInst"]["data"]["kind"] == "container-instance"
+        assert by_id["webInst"]["data"]["label"] == "Web"
+        assert by_id["webInst"]["data"]["technology"] == "React"
+        assert by_id["lb"]["data"]["kind"] == "infrastructure"
+        boundaries = [n for n in data["nodes"] if n["data"]["kind"] == "boundary"]
+        assert all(n["data"]["boundaryLabel"] == "Deployment Node" for n in boundaries)
+
+    def test_edges_derive_from_model_and_declared_relationships(
+        self, deploy_workspace: Workspace
+    ) -> None:
+        view = next(v for v in deploy_workspace.views if v.key == "Prod")
+        data = to_g6_data(deploy_workspace, view)
+        pairs = _edge_pairs(data)
+        # web -> orders (component of api) derives webInst -> apiInst.
+        assert ("webInst", "apiInst") in pairs
+        # api -> etl derives apiInst -> etlInst across deployment nodes.
+        assert ("apiInst", "etlInst") in pairs
+        # Declared infrastructure relationship survives as-is.
+        assert ("lb", "webInst") in pairs
+
+    def test_scoped_deployment_prunes_unrelated_branches(
+        self, deploy_workspace: Workspace
+    ) -> None:
+        view = next(v for v in deploy_workspace.views if v.key == "ShopProd")
+        data = to_g6_data(deploy_workspace, view)
+        ids = {n["id"] for n in data["nodes"]}
+        assert "webInst" in ids and "apiInst" in ids
+        # The GCP branch only hosts Analytics, so it is pruned entirely.
+        assert "warehouse" not in ids
+        assert "etlInst" not in ids
+
+
+class TestContainerExpansion:
+    @pytest.fixture
+    def deploy_workspace(self, tmp_path) -> Workspace:
+        path = tmp_path / "deploy.dsl"
+        path.write_text(SPLIT_DEPLOY_DSL, encoding="utf-8")
+        return parse_dsl_file(path)
+
+    def test_containers_with_components_are_flagged_expandable(
+        self, deploy_workspace: Workspace
+    ) -> None:
+        view = next(v for v in deploy_workspace.views if v.key == "Containers")
+        data = to_g6_data(deploy_workspace, view)
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["api"]["data"].get("expandable") is True
+        assert "expandable" not in by_id["web"]["data"]
+
+    def test_expanded_container_becomes_nested_boundary(
+        self, deploy_workspace: Workspace
+    ) -> None:
+        view = next(v for v in deploy_workspace.views if v.key == "Containers")
+        data = to_g6_data(deploy_workspace, view, expand={"api"})
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["api"]["data"]["kind"] == "boundary"
+        assert by_id["api"]["data"]["expanded"] is True
+        assert by_id["api"]["parentId"] == "s"
+        assert by_id["orders"]["parentId"] == "api"
+        assert by_id["items"]["parentId"] == "api"
+        # Edges re-attach at component level inside the expansion.
+        pairs = _edge_pairs(data)
+        assert ("web", "orders") in pairs
+        assert ("orders", "items") in pairs
+
+    def test_expanding_unknown_or_component_free_ids_is_a_noop(
+        self, deploy_workspace: Workspace
+    ) -> None:
+        view = next(v for v in deploy_workspace.views if v.key == "Containers")
+        plain = to_g6_data(deploy_workspace, view)
+        expanded = to_g6_data(deploy_workspace, view, expand={"web", "nope"})
+        assert [n["id"] for n in plain["nodes"]] == [n["id"] for n in expanded["nodes"]]
+
+
 def test_apply_positions_round_trip(workspace: Workspace) -> None:
     view = workspace.views[0]
     # Pick two visible node ids from the generated graph so the test does

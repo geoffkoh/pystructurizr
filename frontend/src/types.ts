@@ -27,7 +27,10 @@ export type NodeKind =
   | "system-external"
   | "container"
   | "component"
-  | "boundary";
+  | "boundary"
+  | "infrastructure"
+  | "container-instance"
+  | "system-instance";
 
 /** A React Flow node as returned by GET /api/views/{key}/graph. */
 export interface GNode {
@@ -39,6 +42,12 @@ export interface GNode {
     technology: string;
     description: string;
     tags: string[];
+    /** On boundary nodes: what the boundary is (e.g. "Deployment Node"). */
+    boundaryLabel?: string;
+    /** On containers that can be expanded in place (container views). */
+    expandable?: boolean;
+    /** On boundary nodes produced by expanding a container. */
+    expanded?: boolean;
   };
   /** Present on nodes nested inside a boundary group node. */
   parentId?: string;

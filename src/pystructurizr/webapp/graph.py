@@ -20,7 +20,12 @@ ReactFlowData = dict[str, list[Any]]
 
 
 _SUPPORTED_TYPES = frozenset(
-    {ViewType.SYSTEM_CONTEXT, ViewType.CONTAINER, ViewType.COMPONENT}
+    {
+        ViewType.SYSTEM_CONTEXT,
+        ViewType.CONTAINER,
+        ViewType.COMPONENT,
+        ViewType.DEPLOYMENT,
+    }
 )
 
 
@@ -31,46 +36,39 @@ def is_supported(view: View) -> bool:
         view: The view to check.
 
     Returns:
-        ``True`` for ``systemContext``, ``container`` and ``component`` views;
-        ``False`` otherwise.
+        ``True`` for ``systemContext``, ``container``, ``component`` and
+        ``deployment`` views; ``False`` otherwise.
     """
     return view.type in _SUPPORTED_TYPES
 
 
-def view_graph(workspace: Workspace, view: View) -> ReactFlowData:
+def view_graph(
+    workspace: Workspace, view: View, expand: set[str] | None = None
+) -> ReactFlowData:
     """Build React Flow ``{nodes, edges}`` data for ``view``.
 
-    Nodes carry their ``label``, ``kind``, the kind's palette ``color`` and
-    the element's ``technology``/``description``/``tags`` in ``data``. Nodes
-    nested inside a boundary group node carry a top-level ``parentId``. A
-    ``position`` is included only when the underlying view element has stored
-    coordinates; otherwise it is omitted so the frontend can run its own
-    auto-layout.
+    Node ``data`` carries everything the graph builder emitted (label, kind,
+    technology, description, tags, boundary/expansion flags) plus the kind's
+    palette ``color``. Nodes nested inside a boundary group node carry a
+    top-level ``parentId``. A ``position`` is included only when the
+    underlying view element has stored coordinates; otherwise it is omitted
+    so the frontend can run its own auto-layout.
 
     Args:
         workspace: The workspace the view belongs to.
         view: The view to render.
+        expand: For container views, ids of containers to expand in place.
 
     Returns:
         A dict with ``nodes`` and ``edges`` lists in React Flow shape.
     """
-    g6 = to_g6_data(workspace, view)
+    g6 = to_g6_data(workspace, view, expand)
 
     nodes: list[ReactFlowNode] = []
     for g6_node in g6["nodes"]:
-        data = g6_node.get("data", {})
-        kind = data.get("kind", "")
-        node: ReactFlowNode = {
-            "id": g6_node["id"],
-            "data": {
-                "label": data.get("label", ""),
-                "kind": kind,
-                "color": KIND_COLOURS.get(kind),
-                "technology": data.get("technology", ""),
-                "description": data.get("description", ""),
-                "tags": data.get("tags", []),
-            },
-        }
+        data = dict(g6_node.get("data", {}))
+        data["color"] = KIND_COLOURS.get(data.get("kind", ""))
+        node: ReactFlowNode = {"id": g6_node["id"], "data": data}
         if "parentId" in g6_node:
             node["parentId"] = g6_node["parentId"]
         style = g6_node.get("style")

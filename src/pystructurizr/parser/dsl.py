@@ -110,6 +110,8 @@ class _Parser:
         # maps DSL identifier → element id used in Workspace
         self._id_map: dict[str, str] = {}
         self._rel_buffer: list[tuple[str, str, str, str]] = []
+        # active deploymentEnvironment name while parsing its block
+        self._current_environment: str = ""
 
     def _peek(self) -> Token:
         return self._tokens[self._pos]
@@ -249,6 +251,9 @@ class _Parser:
             if kw == "group":
                 self._parse_group(ws, parent_id)
                 return
+            if kw == "deploymentenvironment":
+                self._parse_deployment_environment(ws)
+                return
 
         # skip unknown token
         self._advance()
@@ -269,6 +274,11 @@ class _Parser:
         self, ws: Workspace, alias: str | None, parent_id: str | None
     ) -> None:
         kw = self._advance().value.lower()
+        # Instances reference an existing element by identifier, not a name:
+        #   containerInstance webApp
+        ref_ident = ""
+        if kw in ("softwaresysteminstance", "containerinstance") and self._match(IDENT):
+            ref_ident = self._advance().value
         name = self._optional_string()
         description = self._optional_string()
         technology = (
@@ -347,6 +357,7 @@ class _Parser:
                 description=description,
                 technology=technology,
                 tags=tags,
+                environment=self._current_environment,
                 parent_id=parent_node.id if parent_node is not None else "",
             )
             if parent_node is not None:
@@ -374,21 +385,31 @@ class _Parser:
             if self._match(LBRACE):
                 self._skip_block()
         elif kw == "softwaresysteminstance":
-            system_id = self._id_map.get(name, name)
-            inst = SoftwareSystemInstance(id=elem_id, software_system_id=system_id)
+            ref = ref_ident or name
+            system_id = self._id_map.get(ref, ref)
+            inst_id = alias or self._unique_id(f"{system_id}_instance")
+            inst = SoftwareSystemInstance(
+                id=inst_id,
+                software_system_id=system_id,
+                environment=self._current_environment,
+            )
             parent_node = self._find_deployment_node(ws, parent_id)
             if parent_node is not None:
                 parent_node.software_system_instances.append(inst)
-            if alias:
-                self._id_map[alias] = elem_id
+            self._id_map[alias or inst_id] = inst_id
         elif kw == "containerinstance":
-            container_id = self._id_map.get(name, name)
-            inst = ContainerInstance(id=elem_id, container_id=container_id)
+            ref = ref_ident or name
+            container_id = self._id_map.get(ref, ref)
+            inst_id = alias or self._unique_id(f"{container_id}_instance")
+            inst = ContainerInstance(
+                id=inst_id,
+                container_id=container_id,
+                environment=self._current_environment,
+            )
             parent_node = self._find_deployment_node(ws, parent_id)
             if parent_node is not None:
                 parent_node.container_instances.append(inst)
-            if alias:
-                self._id_map[alias] = elem_id
+            self._id_map[alias or inst_id] = inst_id
 
     def _parse_software_system_body(
         self, ws: Workspace, system: SoftwareSystem
@@ -454,6 +475,35 @@ class _Parser:
             while not self._match(RBRACE, EOF):
                 self._parse_model_item(ws, parent_id)
             self._expect(RBRACE)
+
+    def _parse_deployment_environment(self, ws: Workspace) -> None:
+        """Parse ``deploymentEnvironment "Name" { ... }``.
+
+        Deployment nodes and instances created inside the block are stamped
+        with the environment name so deployment views can filter on it.
+        """
+        self._advance()  # consume keyword
+        env_name = self._optional_string() or self._optional_ident()
+        if env_name and env_name not in ws.model.deployment_environments:
+            ws.model.deployment_environments.append(env_name)
+        previous = self._current_environment
+        self._current_environment = env_name
+        if self._match(LBRACE):
+            self._expect(LBRACE)
+            while not self._match(RBRACE, EOF):
+                self._parse_model_item(ws, parent_id=None)
+            self._expect(RBRACE)
+        self._current_environment = previous
+
+    def _unique_id(self, base: str) -> str:
+        """Return ``base`` or a numbered variant not yet used as an id."""
+        taken = set(self._id_map.values())
+        if base not in taken:
+            return base
+        n = 2
+        while f"{base}_{n}" in taken:
+            n += 1
+        return f"{base}_{n}"
 
     def _parse_deployment_node_body(self, ws: Workspace, node: DeploymentNode) -> None:
         self._expect(LBRACE)
@@ -537,9 +587,18 @@ class _Parser:
     def _parse_view(self, view_type: ViewType) -> View:
         self._advance()  # consume keyword
         element_id = ""
-        if self._match(IDENT):
+        if self._match(WILDCARD):
+            self._advance()  # deployment/landscape scope "*" means unscoped
+        elif self._match(IDENT):
             raw_id = self._advance().value
             element_id = self._id_map.get(raw_id, raw_id)
+        environment = ""
+        if view_type == ViewType.DEPLOYMENT:
+            # deployment <scope> <environment> [key] [title] [description]
+            if self._match(STRING):
+                environment = self._advance().value.strip('"')
+            elif self._match(IDENT):
+                environment = self._advance().value
         key = ""
         if self._match(IDENT):
             key = self._advance().value
@@ -549,10 +608,11 @@ class _Parser:
         description = self._optional_string()
         view = View(
             type=view_type,
-            key=key or element_id,
+            key=key or element_id or environment,
             element_id=element_id,
             title=title,
             description=description,
+            environment=environment,
         )
         if self._match(LBRACE):
             self._expect(LBRACE)

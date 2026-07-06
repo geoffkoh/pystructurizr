@@ -8,6 +8,7 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
         !include model/risk.dsl
         !include model/externals.dsl
         !include model/relationships.dsl
+        !include model/deployment.dsl
     }
 
     views {
@@ -36,12 +37,27 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
             autoLayout
         }
 
+        component algoEngine AlgoEngineComponents "Algo Engine – Components" {
+            include *
+            autoLayout
+        }
+
         container marketData MarketDataContainers "Market Data – Containers" {
             include *
             autoLayout
         }
 
         container risk RiskContainers "Risk & PnL – Containers" {
+            include *
+            autoLayout
+        }
+
+        deployment * "Production" ProductionDeployment "Production – Full Estate" {
+            include *
+            autoLayout
+        }
+
+        deployment oms "Production" OmsProduction "Order Management – Production Deployment" {
             include *
             autoLayout
         }

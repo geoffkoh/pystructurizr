@@ -80,8 +80,16 @@ export function listViews(): Promise<ViewInfo[]> {
 }
 
 /** GET /api/views/{key}/graph -> React Flow graph data for a view. */
-export function getViewGraph(key: string): Promise<GraphData> {
-  return request<GraphData>(`/api/views/${encodeURIComponent(key)}/graph`);
+export function getViewGraph(
+  key: string,
+  expand: string[] = [],
+): Promise<GraphData> {
+  const query = expand.length
+    ? `?expand=${encodeURIComponent(expand.join(","))}`
+    : "";
+  return request<GraphData>(
+    `/api/views/${encodeURIComponent(key)}/graph${query}`,
+  );
 }
 
 /** POST /api/views/{key}/layout -> persist dragged node positions. */
