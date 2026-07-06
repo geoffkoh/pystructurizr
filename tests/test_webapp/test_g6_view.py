@@ -401,6 +401,38 @@ class TestTagBasedStyles:
         assert by_id["web"]["data"]["color"] == "#43a047"  # palette fallback
 
 
+class TestRankDirection:
+    def test_defaults_to_top_bottom(self, workspace: Workspace) -> None:
+        from pystructurizr.webapp.graph import view_graph
+
+        data = view_graph(workspace, workspace.views[0])
+        assert data["rankDirection"] == "TB"
+
+    def test_honours_autolayout_direction(self, tmp_path: Path) -> None:
+        from pystructurizr.webapp.graph import view_graph
+
+        dsl = """
+        workspace {
+            model {
+                u = person "User"
+                s = softwareSystem "System"
+                u -> s "Uses"
+            }
+            views {
+                systemContext s ctx {
+                    include *
+                    autoLayout lr
+                }
+            }
+        }
+        """
+        path = tmp_path / "lr.dsl"
+        path.write_text(dsl, encoding="utf-8")
+        ws = parse_dsl_file(path)
+        data = view_graph(ws, ws.views[0])
+        assert data["rankDirection"] == "LR"
+
+
 def test_apply_positions_round_trip(workspace: Workspace) -> None:
     view = workspace.views[0]
     # Pick two visible node ids from the generated graph so the test does

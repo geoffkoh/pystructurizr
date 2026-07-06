@@ -72,6 +72,8 @@ export interface GEdge {
 export interface GraphData {
   nodes: GNode[];
   edges: GEdge[];
+  /** dagre rank direction from the view's autoLayout: TB, BT, LR or RL. */
+  rankDirection: "TB" | "BT" | "LR" | "RL";
 }
 
 /** Response body from POST /api/views/{key}/layout. */

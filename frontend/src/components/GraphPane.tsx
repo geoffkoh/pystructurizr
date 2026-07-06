@@ -102,7 +102,7 @@ function toFlow(
   // If any node lacks a stored position, run a fresh auto-layout; otherwise
   // adapt the stored absolute positions to the nested-node model.
   const positioned = anyMissingPosition
-    ? layoutGraph(nodes, edges)
+    ? layoutGraph(nodes, edges, data.rankDirection)
     : normalizeStoredPositions(nodes, edges);
   return { nodes: positioned, edges };
 }

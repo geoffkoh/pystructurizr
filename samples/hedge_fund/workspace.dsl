@@ -39,7 +39,7 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
 
         component algoEngine AlgoEngineComponents "Algo Engine – Components" {
             include *
-            autoLayout
+            autoLayout lr
         }
 
         container marketData MarketDataContainers "Market Data – Containers" {

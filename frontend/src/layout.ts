@@ -45,13 +45,16 @@ function nodeSize(node: Node): Size {
  * dagre positions nodes by their centre; React Flow positions by the
  * top-left corner, so we offset by half of each node's size.
  */
+export type RankDirection = "TB" | "BT" | "LR" | "RL";
+
 function dagreLevel(
   items: { id: string; size: Size }[],
   edges: { source: string; target: string }[],
+  direction: RankDirection,
 ): Map<string, Point> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 90 });
+  g.setGraph({ rankdir: direction, nodesep: 60, ranksep: 90 });
 
   for (const item of items) {
     g.setNode(item.id, { ...item.size });
@@ -112,7 +115,11 @@ function ancestorAtLevel(
  * nesting depth) to fit their children. Child positions are relative to
  * their parent, as React Flow expects for nested nodes.
  */
-export function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
+export function layoutGraph(
+  nodes: Node[],
+  edges: Edge[],
+  direction: RankDirection = "TB",
+): Node[] {
   const { parentOf, childrenOf } = buildHierarchy(nodes);
   const positions = new Map<string, Point>();
   const groupSizes = new Map<string, Size>();
@@ -149,6 +156,7 @@ export function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
     const laidOut = dagreLevel(
       children.map((c) => ({ id: c.id, size: sizeOf(c) })),
       edgesAtLevel(parentId),
+      direction,
     );
 
     let maxX = 0;
