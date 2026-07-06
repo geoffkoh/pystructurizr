@@ -24,6 +24,9 @@ export interface ElementNodeData {
   technology: string;
   description: string;
   tags: string[];
+  /** Tag-based style overrides from the DSL styles block. */
+  textColor?: string;
+  shape?: string;
   /** Key of the view this node drills into on double-click, if any. */
   drillKey?: string;
   /** Label of the drill target, used for the hover hint. */
@@ -39,16 +42,32 @@ function metaLine(data: ElementNodeData): string {
   return data.technology ? `[${kindLabel}: ${data.technology}]` : `[${kindLabel}]`;
 }
 
+/** CSS modifier class per Structurizr shape; unlisted shapes use the default. */
+const SHAPE_CLASSES: Record<string, string> = {
+  Box: "node--box",
+  Cylinder: "node--cylinder",
+  Bucket: "node--cylinder",
+  Circle: "node--circle",
+  Ellipse: "node--circle",
+  Pipe: "node--pipe",
+};
+
 /**
- * Custom React Flow node coloured by its element kind. People render with
- * the conventional C4 silhouette (head circle above the box); all elements
+ * Custom React Flow node coloured by its element kind (or the workspace's
+ * tag-based styles when defined). People render with the conventional C4
+ * silhouette (head circle above the box); styled shapes (cylinder for
+ * datastores, box, circle, pipe) render via CSS modifiers. All elements
  * show their `[Kind: technology]` metadata and description. Nodes with a
  * drill target open it on double-click; expandable containers show a ＋
  * control that expands them in place.
  */
 function ElementNodeComponent({ id, data }: NodeProps<ElementNodeData>) {
   const background = data.color ?? FALLBACK_COLOR;
-  const isPerson = data.kind.startsWith("person");
+  const isPerson =
+    data.shape === "Person" ||
+    data.shape === "Robot" ||
+    (data.shape === undefined && data.kind.startsWith("person"));
+  const shapeClass = (!isPerson && SHAPE_CLASSES[data.shape ?? ""]) || "";
   const drillable = Boolean(data.drillKey);
   const expandable = Boolean(data.expandable && data.onToggleExpand);
 
@@ -62,9 +81,10 @@ function ElementNodeComponent({ id, data }: NodeProps<ElementNodeData>) {
       className={
         "node" +
         (isPerson ? " node--person" : "") +
+        (shapeClass ? ` ${shapeClass}` : "") +
         (drillable ? " node--drillable" : "")
       }
-      style={{ background }}
+      style={{ background, color: data.textColor || undefined }}
       title={
         drillable ? `Double-click to open ${data.drillLabel ?? "view"}` : undefined
       }

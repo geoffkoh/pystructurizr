@@ -314,6 +314,49 @@ def _edges(
     return edges
 
 
+# Implicit Structurizr tag per node kind, used for tag-based style matching.
+_IMPLICIT_TAGS: dict[str, str] = {
+    "person": "Person",
+    "person-external": "Person",
+    "system": "Software System",
+    "system-external": "Software System",
+    "container": "Container",
+    "component": "Component",
+    "infrastructure": "Infrastructure Node",
+    "container-instance": "Container Instance",
+    "system-instance": "Software System Instance",
+}
+
+
+def _apply_styles(workspace: Workspace, nodes: list[G6Node]) -> None:
+    """Overlay tag-based element styles onto node data, in place.
+
+    Mirrors Structurizr style resolution: every element implicitly carries
+    the ``Element`` tag plus a tag for its kind, then its own tags; element
+    style rules are applied in declaration order, later matches overriding
+    earlier ones. Applied properties land in node data as ``background``,
+    ``textColor`` and ``shape``.
+    """
+    styles = workspace.views.configuration.styles.element_styles
+    if not styles:
+        return
+    for node in nodes:
+        data = node["data"]
+        implicit = _IMPLICIT_TAGS.get(data.get("kind", ""))
+        if implicit is None:
+            continue
+        tags = {"Element", implicit, *data.get("tags", [])}
+        for style in styles:
+            if style.tag not in tags:
+                continue
+            if style.background:
+                data["background"] = style.background
+            if style.color:
+                data["textColor"] = style.color
+            if style.shape is not None:
+                data["shape"] = style.shape.value
+
+
 def _deployment_data(workspace: Workspace, view: View) -> G6Data:
     """Build graph data for a deployment view.
 
@@ -420,7 +463,7 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
                     "system-instance",
                     "",
                     s.description if s else "",
-                    list(ssi.tags),
+                    list(ssi.tags) + (list(s.tags) if s else []),
                     dn.id,
                 )
                 instance_refs[ssi.id] = ssi.software_system_id
@@ -433,7 +476,7 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
                     "container-instance",
                     c.technology if c else "",
                     c.description if c else "",
-                    list(ci.tags),
+                    list(ci.tags) + (list(c.tags) if c else []),
                     dn.id,
                 )
                 instance_refs[ci.id] = ci.container_id
@@ -479,6 +522,7 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
             for dst_inst in ref_instances[dst_ref]:
                 add_edge(src_inst, dst_inst, rel)
 
+    _apply_styles(workspace, nodes)
     return {"nodes": nodes, "edges": edges}
 
 
@@ -579,6 +623,7 @@ def to_g6_data(
                         _node(comp.id, comp, "component", x, y, child_of(comp.id))
                     )
 
+    _apply_styles(workspace, nodes)
     return {"nodes": nodes, "edges": _edges(workspace, visible, parents)}
 
 

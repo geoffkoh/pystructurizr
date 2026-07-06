@@ -67,7 +67,8 @@ def view_graph(
     nodes: list[ReactFlowNode] = []
     for g6_node in g6["nodes"]:
         data = dict(g6_node.get("data", {}))
-        data["color"] = KIND_COLOURS.get(data.get("kind", ""))
+        # Tag-based style backgrounds win over the built-in kind palette.
+        data["color"] = data.get("background") or KIND_COLOURS.get(data.get("kind", ""))
         node: ReactFlowNode = {"id": g6_node["id"], "data": data}
         if "parentId" in g6_node:
             node["parentId"] = g6_node["parentId"]

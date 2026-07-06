@@ -15,16 +15,20 @@ from typing import Iterator
 
 from pystructurizr.models import (
     AutomaticLayout,
+    Border,
     Component,
     Container,
     ContainerInstance,
     DeploymentNode,
+    ElementStyle,
     Enterprise,
     InfrastructureNode,
     Location,
     Person,
     RankDirection,
     Relationship,
+    RelationshipStyle,
+    Shape,
     SoftwareSystem,
     SoftwareSystemInstance,
     View,
@@ -52,6 +56,8 @@ ARROW = _TT("ARROW")
 EQUALS = _TT("EQUALS")
 BANG = _TT("BANG")
 WILDCARD = _TT("WILDCARD")
+COLOR = _TT("COLOR")
+NUMBER = _TT("NUMBER")
 EOF = _TT("EOF")
 
 
@@ -73,7 +79,9 @@ _TOKEN_RE = re.compile(
     r"(?P<BANG>!)|"
     r"(?P<WILDCARD>\*)|"
     r"(?P<NEWLINE>\n)|"
+    r"(?P<COLOR>#[0-9A-Fa-f]{3,8})|"
     r"(?P<IDENT>[A-Za-z_][A-Za-z0-9_]*)|"
+    r"(?P<NUMBER>[0-9]+)|"
     r"(?P<SKIP>[ \t\r]+)",
     re.DOTALL,
 )
@@ -97,6 +105,10 @@ def _tokenize(text: str) -> list[Token]:
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
+
+
+_SHAPE_MAP = {shape.value.lower(): shape for shape in Shape}
+_BORDER_MAP = {border.value.lower(): border for border in Border}
 
 
 class ParseError(Exception):
@@ -568,11 +580,12 @@ class _Parser:
                 ws.views.append(self._parse_view(ViewType.DYNAMIC))
             elif kw == "deployment":
                 ws.views.append(self._parse_view(ViewType.DEPLOYMENT))
+            elif kw == "styles":
+                self._parse_styles(ws)
             elif kw in (
                 "filtered",
                 "theme",
                 "themes",
-                "styles",
                 "branding",
                 "terminology",
             ):
@@ -582,6 +595,96 @@ class _Parser:
                     self._skip_block()
             else:
                 self._advance()
+        self._expect(RBRACE)
+
+    def _parse_styles(self, ws: Workspace) -> None:
+        """Parse a views-level ``styles`` block into the view configuration.
+
+        Supports ``element "Tag" { ... }`` and ``relationship "Tag" { ... }``
+        rules; unknown rule kinds and properties are skipped.
+        """
+        self._advance()  # consume 'styles'
+        if not self._match(LBRACE):
+            return
+        self._expect(LBRACE)
+        styles = ws.views.configuration.styles
+        while not self._match(RBRACE, EOF):
+            kw = self._peek_value().lower() if self._match(IDENT) else ""
+            if kw == "element":
+                self._advance()
+                style = ElementStyle(tag=self._optional_string())
+                self._parse_element_style_body(style)
+                styles.element_styles.append(style)
+            elif kw == "relationship":
+                self._advance()
+                rel_style = RelationshipStyle(tag=self._optional_string())
+                self._parse_relationship_style_body(rel_style)
+                styles.relationship_styles.append(rel_style)
+            else:
+                self._advance()
+        self._expect(RBRACE)
+
+    def _style_value(self) -> str:
+        """Consume and return one style property value token, if present."""
+        if self._match(COLOR, STRING):
+            return self._advance().value.strip('"')
+        if self._match(IDENT, NUMBER):
+            return self._advance().value
+        return ""
+
+    def _parse_element_style_body(self, style: ElementStyle) -> None:
+        if not self._match(LBRACE):
+            return
+        self._expect(LBRACE)
+        while not self._match(RBRACE, EOF):
+            if not self._match(IDENT):
+                self._advance()
+                continue
+            prop = self._advance().value.lower()
+            value = self._style_value()
+            if prop == "background":
+                style.background = value
+            elif prop in ("color", "colour"):
+                style.color = value
+            elif prop == "stroke":
+                style.stroke = value
+            elif prop == "shape":
+                style.shape = _SHAPE_MAP.get(value.lower())
+            elif prop == "border":
+                style.border = _BORDER_MAP.get(value.lower())
+            elif prop == "icon":
+                style.icon = value
+            elif prop == "fontsize" and value.isdigit():
+                style.font_size = int(value)
+            elif prop == "opacity" and value.isdigit():
+                style.opacity = int(value)
+            elif prop == "width" and value.isdigit():
+                style.width = int(value)
+            elif prop == "height" and value.isdigit():
+                style.height = int(value)
+            # Unknown properties: the value token is consumed; ignore.
+        self._expect(RBRACE)
+
+    def _parse_relationship_style_body(self, style: RelationshipStyle) -> None:
+        if not self._match(LBRACE):
+            return
+        self._expect(LBRACE)
+        while not self._match(RBRACE, EOF):
+            if not self._match(IDENT):
+                self._advance()
+                continue
+            prop = self._advance().value.lower()
+            value = self._style_value()
+            if prop in ("color", "colour"):
+                style.color = value
+            elif prop == "thickness" and value.isdigit():
+                style.thickness = int(value)
+            elif prop == "width" and value.isdigit():
+                style.width = int(value)
+            elif prop == "fontsize" and value.isdigit():
+                style.font_size = int(value)
+            elif prop == "dashed":
+                style.dashed = value.lower() == "true"
         self._expect(RBRACE)
 
     def _parse_view(self, view_type: ViewType) -> View:
