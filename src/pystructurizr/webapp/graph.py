@@ -10,13 +10,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from pystructurizr.models import View, ViewType, Workspace
+from pystructurizr.models import RankDirection, View, ViewType, Workspace
 from pystructurizr.webapp.g6_view import KIND_COLOURS, to_g6_data
+
+
+# View rank direction → dagre rankdir.
+_RANK_DIRECTIONS: dict[RankDirection, str] = {
+    RankDirection.TOP_BOTTOM: "TB",
+    RankDirection.BOTTOM_TOP: "BT",
+    RankDirection.LEFT_RIGHT: "LR",
+    RankDirection.RIGHT_LEFT: "RL",
+}
 
 
 ReactFlowNode = dict[str, Any]
 ReactFlowEdge = dict[str, Any]
-ReactFlowData = dict[str, list[Any]]
+ReactFlowData = dict[str, Any]
 
 
 _SUPPORTED_TYPES = frozenset(
@@ -88,4 +97,8 @@ def view_graph(
             }
         )
 
-    return {"nodes": nodes, "edges": edges}
+    direction = "TB"
+    if view.auto_layout is not None:
+        direction = _RANK_DIRECTIONS.get(view.auto_layout.rank_direction, "TB")
+
+    return {"nodes": nodes, "edges": edges, "rankDirection": direction}
