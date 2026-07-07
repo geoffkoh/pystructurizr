@@ -159,6 +159,9 @@ def _default_ids(workspace: Workspace, view: View, parents: dict[str, str]) -> s
     people = [p.id for p in workspace.people]
     systems = [s.id for s in workspace.software_systems]
 
+    if view.type == ViewType.SYSTEM_LANDSCAPE:
+        return set(people) | set(systems)
+
     if view.type == ViewType.SYSTEM_CONTEXT:
         allowed = people + [sid for sid in systems if sid != scope]
         if not scope:
@@ -573,6 +576,25 @@ def to_g6_data(
 
     nodes: list[G6Node] = []
 
+    # Landscape views group internal elements inside the enterprise
+    # boundary when one is defined.
+    enterprise_id: str | None = None
+    if view.type == ViewType.SYSTEM_LANDSCAPE and workspace.enterprise is not None:
+        enterprise_id = "__enterprise__"
+        nodes.append(
+            {
+                "id": enterprise_id,
+                "data": {
+                    "label": workspace.enterprise.name,
+                    "kind": "boundary",
+                    "technology": "",
+                    "description": "",
+                    "tags": [],
+                    "boundaryLabel": "Enterprise",
+                },
+            }
+        )
+
     boundary_id: str | None = None
     scope = _boundary_scope(workspace, view)
     if scope is not None:
@@ -594,15 +616,22 @@ def to_g6_data(
             return parent
         return None
 
+    def enterprise_parent(kind: str) -> str | None:
+        if enterprise_id is not None and not kind.endswith("-external"):
+            return enterprise_id
+        return None
+
     for p in workspace.people:
         if p.id in visible:
             x, y = pos(p.id)
-            nodes.append(_node(p.id, p, _person_kind(p), x, y))
+            kind = _person_kind(p)
+            nodes.append(_node(p.id, p, kind, x, y, enterprise_parent(kind)))
 
     for s in workspace.software_systems:
         if s.id in visible:
             x, y = pos(s.id)
-            nodes.append(_node(s.id, s, _system_kind(s), x, y))
+            kind = _system_kind(s)
+            nodes.append(_node(s.id, s, kind, x, y, enterprise_parent(kind)))
         for c in s.containers:
             if c.id in expanded:
                 x, y = pos(c.id)

@@ -1,6 +1,8 @@
 workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture for a systematic hedge fund" {
 
     model {
+        enterprise "Quantia Capital"
+
         !include model/people.dsl
         !include model/market_data.dsl
         !include model/oms.dsl
@@ -12,6 +14,11 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
     }
 
     views {
+        systemLandscape Landscape "Quantia – System Landscape" {
+            include *
+            autoLayout
+        }
+
         systemContext oms OmsContext "Order Management – System Context" {
             include *
             autoLayout

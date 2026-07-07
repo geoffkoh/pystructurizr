@@ -8,6 +8,7 @@
 import type { GNode, ViewInfo, Workspace } from "./types";
 
 const TYPE_LABELS: Record<string, string> = {
+  systemLandscape: "Landscape",
   systemContext: "Context",
   container: "Containers",
   component: "Components",
@@ -59,8 +60,17 @@ export function crumbLabel(
 export function drillTarget(
   node: GNode,
   views: ViewInfo[],
+  currentView?: ViewInfo,
 ): ViewInfo | undefined {
   if (node.data.kind === "system") {
+    // From the landscape, drill one level down to the system's context
+    // view first; elsewhere go straight to its containers.
+    if (currentView?.type === "systemLandscape") {
+      return (
+        findView(views, "systemContext", node.id) ??
+        findView(views, "container", node.id)
+      );
+    }
     return findView(views, "container", node.id);
   }
   if (node.data.kind === "container") {
@@ -80,18 +90,28 @@ export function buildTrail(
   views: ViewInfo[],
   workspace: Workspace | null,
 ): ViewInfo[] {
+  // The landscape (when present) is the root of every trail.
+  const landscape = views.find(
+    (v) => v.supported && v.type === "systemLandscape",
+  );
+  const root = landscape && landscape.key !== view.key ? [landscape] : [];
+
+  if (view.type === "systemContext") {
+    return [...root, view];
+  }
   if (view.type === "container") {
     const context = findView(views, "systemContext", view.element_id);
-    return context ? [context, view] : [view];
+    return [...root, ...(context ? [context] : []), view];
   }
   if (view.type === "component" && workspace) {
     const system = workspace.model.software_systems.find((s) =>
       s.containers.some((c) => c.id === view.element_id),
     );
-    if (!system) return [view];
+    if (!system) return [...root, view];
     const context = findView(views, "systemContext", system.id);
     const containers = findView(views, "container", system.id);
     return [
+      ...root,
       ...(context ? [context] : []),
       ...(containers ? [containers] : []),
       view,
