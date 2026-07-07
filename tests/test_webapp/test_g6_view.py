@@ -531,6 +531,115 @@ class TestDynamicView:
         assert by_id["web"]["data"]["kind"] == "container"
 
 
+EXPANSION_DSL = """
+workspace "Exp" {
+    model {
+        enterprise "Acme"
+        u = person "User"
+        s = softwareSystem "Shop" {
+            web = container "Web"
+            api = container "API" {
+                orders = component "Orders"
+                items  = component "Items"
+            }
+        }
+        vendor = softwareSystem "Vendor" "" "External System" {
+            vapi = container "Vendor API"
+        }
+        u -> web "Uses"
+        web -> orders "Calls"
+        orders -> items "Reads"
+        api -> vapi "Fetches prices from"
+    }
+    views {
+        systemLandscape Land "Landscape" {
+            include *
+        }
+        systemContext s Ctx "Context" {
+            include *
+        }
+    }
+}
+"""
+
+
+class TestGeneralizedExpansion:
+    @pytest.fixture
+    def exp_workspace(self, tmp_path: Path) -> Workspace:
+        path = tmp_path / "exp.dsl"
+        path.write_text(EXPANSION_DSL, encoding="utf-8")
+        return parse_dsl_file(path)
+
+    def _view(self, ws: Workspace, key: str) -> View:
+        return next(v for v in ws.views if v.key == key)
+
+    def test_system_leaves_are_flagged_expandable(
+        self, exp_workspace: Workspace
+    ) -> None:
+        data = to_g6_data(exp_workspace, self._view(exp_workspace, "Ctx"))
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["s"]["data"].get("expandable") is True
+        # External systems with modelled containers are expandable too.
+        assert by_id["vendor"]["data"].get("expandable") is True
+        assert "expandable" not in by_id["u"]["data"]
+
+    def test_expanding_a_system_in_a_context_view(
+        self, exp_workspace: Workspace
+    ) -> None:
+        view = self._view(exp_workspace, "Ctx")
+        data = to_g6_data(exp_workspace, view, expand={"s"})
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["s"]["data"]["kind"] == "boundary"
+        assert by_id["s"]["data"]["boundaryLabel"] == "Software System"
+        assert by_id["s"]["data"]["expanded"] is True
+        assert by_id["web"]["parentId"] == "s"
+        assert by_id["api"]["parentId"] == "s"
+        # Containers inside the expansion expose their own expandability.
+        assert by_id["api"]["data"].get("expandable") is True
+        assert "expandable" not in by_id["web"]["data"]
+        # Edges re-attach at container level.
+        pairs = _edge_pairs(data)
+        assert ("u", "web") in pairs
+        assert ("api", "vendor") in pairs
+
+    def test_nested_expansion_system_then_container(
+        self, exp_workspace: Workspace
+    ) -> None:
+        view = self._view(exp_workspace, "Ctx")
+        data = to_g6_data(exp_workspace, view, expand={"s", "api"})
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["api"]["data"]["kind"] == "boundary"
+        assert by_id["api"]["parentId"] == "s"
+        assert by_id["orders"]["parentId"] == "api"
+        assert by_id["items"]["parentId"] == "api"
+        pairs = _edge_pairs(data)
+        assert ("web", "orders") in pairs
+        assert ("orders", "items") in pairs
+
+    def test_expanding_a_container_requires_its_parent_expanded(
+        self, exp_workspace: Workspace
+    ) -> None:
+        view = self._view(exp_workspace, "Ctx")
+        # api is not visible in a context view unless s is expanded, so
+        # expanding only api is a no-op.
+        data = to_g6_data(exp_workspace, view, expand={"api"})
+        ids = {n["id"] for n in data["nodes"]}
+        assert "api" not in ids
+        assert "orders" not in ids
+
+    def test_expanded_system_nests_inside_enterprise_boundary(
+        self, exp_workspace: Workspace
+    ) -> None:
+        view = self._view(exp_workspace, "Land")
+        data = to_g6_data(exp_workspace, view, expand={"s"})
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert by_id["s"]["data"]["expanded"] is True
+        assert by_id["s"]["parentId"] == "__enterprise__"
+        assert by_id["web"]["parentId"] == "s"
+        # Externals stay outside both boundaries.
+        assert "parentId" not in by_id["vendor"]
+
+
 class TestRankDirection:
     def test_defaults_to_top_bottom(self, workspace: Workspace) -> None:
         from pystructurizr.webapp.graph import view_graph

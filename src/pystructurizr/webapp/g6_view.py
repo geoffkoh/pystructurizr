@@ -639,8 +639,10 @@ def to_g6_data(
     Args:
         workspace: The workspace to render from.
         view: The view to render.
-        expand: For container views, ids of containers to expand in place —
-            each becomes a nested boundary containing its components.
+        expand: Ids of elements to expand in place — a software system
+            becomes a nested boundary holding its containers, a container
+            one holding its components. Expansion cascades, so a container
+            inside an expanded system can itself be expanded.
     """
     if view.type == ViewType.DEPLOYMENT:
         return _deployment_data(workspace, view)
@@ -655,19 +657,36 @@ def to_g6_data(
         xy = positions.get(eid)
         return xy if xy is not None else (None, None)
 
-    # In container views, requested containers with components expand into
-    # nested boundaries holding their components.
+    # Any requested element with children expands into a nested boundary:
+    # systems into their containers, containers into their components.
+    # Expansion cascades (fixpoint) so children of an expanded element can
+    # themselves be expanded, nesting arbitrarily deep.
+    systems_by_id = {s.id: s for s in workspace.software_systems}
+    containers_by_id = {
+        c.id: c for s in workspace.software_systems for c in s.containers
+    }
+
+    def children_of(eid: str) -> list[str]:
+        if eid in systems_by_id:
+            return [c.id for c in systems_by_id[eid].containers]
+        if eid in containers_by_id:
+            return [comp.id for comp in containers_by_id[eid].components]
+        return []
+
     expanded: set[str] = set()
-    if expand and view.type == ViewType.CONTAINER:
-        all_containers = {
-            c.id: c for s in workspace.software_systems for c in s.containers
-        }
-        expanded = {
-            cid for cid in expand if cid in visible and all_containers[cid].components
-        }
+    if expand:
+        changed = True
+        while changed:
+            changed = False
+            for eid in expand:
+                if eid in expanded or not children_of(eid):
+                    continue
+                if eid in visible or parents.get(eid) in expanded:
+                    expanded.add(eid)
+                    changed = True
         visible -= expanded
-        for cid in expanded:
-            visible.update(comp.id for comp in all_containers[cid].components)
+        for eid in expanded:
+            visible.update(child for child in children_of(eid) if child not in expanded)
 
     nodes: list[G6Node] = []
 
@@ -723,10 +742,20 @@ def to_g6_data(
             nodes.append(_node(p.id, p, kind, x, y, enterprise_parent(kind)))
 
     for s in workspace.software_systems:
-        if s.id in visible:
+        if s.id in expanded:
             x, y = pos(s.id)
             kind = _system_kind(s)
-            nodes.append(_node(s.id, s, kind, x, y, enterprise_parent(kind)))
+            group = _node(s.id, s, "boundary", x, y, enterprise_parent(kind))
+            group["data"]["boundaryLabel"] = "Software System"
+            group["data"]["expanded"] = True
+            nodes.append(group)
+        elif s.id in visible:
+            x, y = pos(s.id)
+            kind = _system_kind(s)
+            node = _node(s.id, s, kind, x, y, enterprise_parent(kind))
+            if s.containers:
+                node["data"]["expandable"] = True
+            nodes.append(node)
         for c in s.containers:
             if c.id in expanded:
                 x, y = pos(c.id)
@@ -737,7 +766,7 @@ def to_g6_data(
             elif c.id in visible:
                 x, y = pos(c.id)
                 node = _node(c.id, c, "container", x, y, child_of(c.id))
-                if view.type == ViewType.CONTAINER and c.components:
+                if c.components:
                     node["data"]["expandable"] = True
                 nodes.append(node)
             for comp in c.components:
