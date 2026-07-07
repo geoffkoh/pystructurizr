@@ -401,6 +401,76 @@ class TestTagBasedStyles:
         assert by_id["web"]["data"]["color"] == "#43a047"  # palette fallback
 
 
+class TestSystemLandscapeView:
+    @pytest.fixture
+    def landscape_workspace(self, tmp_path: Path) -> Workspace:
+        dsl = """
+        workspace "Land" {
+            model {
+                enterprise "Acme"
+                staff = person "Staff"
+                visitor = person "Visitor" "" "External Person"
+                core = softwareSystem "Core" {
+                    api = container "API"
+                }
+                vendor = softwareSystem "Vendor" "" "External System"
+                staff -> api "Uses"
+                visitor -> core "Browses"
+                core -> vendor "Calls"
+            }
+            views {
+                systemLandscape Landscape "The Landscape" {
+                    include *
+                    autoLayout
+                }
+            }
+        }
+        """
+        path = tmp_path / "land.dsl"
+        path.write_text(dsl, encoding="utf-8")
+        return parse_dsl_file(path)
+
+    def test_key_is_not_swallowed_as_scope(
+        self, landscape_workspace: Workspace
+    ) -> None:
+        view = landscape_workspace.views[0]
+        assert view.key == "Landscape"
+        assert view.element_id == ""
+        assert view.title == "The Landscape"
+
+    def test_shows_all_people_and_systems_only(
+        self, landscape_workspace: Workspace
+    ) -> None:
+        data = to_g6_data(landscape_workspace, landscape_workspace.views[0])
+        kinds = {n["id"]: n["data"]["kind"] for n in data["nodes"]}
+        assert "api" not in kinds  # containers never appear
+        assert kinds["staff"] == "person"
+        assert kinds["vendor"] == "system-external"
+
+    def test_enterprise_boundary_nests_internal_elements(
+        self, landscape_workspace: Workspace
+    ) -> None:
+        data = to_g6_data(landscape_workspace, landscape_workspace.views[0])
+        by_id = {n["id"]: n for n in data["nodes"]}
+        boundary = by_id["__enterprise__"]
+        assert boundary["data"]["kind"] == "boundary"
+        assert boundary["data"]["label"] == "Acme"
+        assert boundary["data"]["boundaryLabel"] == "Enterprise"
+        assert by_id["staff"]["parentId"] == "__enterprise__"
+        assert by_id["core"]["parentId"] == "__enterprise__"
+        assert "parentId" not in by_id["visitor"]
+        assert "parentId" not in by_id["vendor"]
+
+    def test_edges_lift_to_systems(self, landscape_workspace: Workspace) -> None:
+        data = to_g6_data(landscape_workspace, landscape_workspace.views[0])
+        pairs = _edge_pairs(data)
+        assert pairs == {
+            ("staff", "core"),
+            ("visitor", "core"),
+            ("core", "vendor"),
+        }
+
+
 class TestRankDirection:
     def test_defaults_to_top_bottom(self, workspace: Workspace) -> None:
         from pystructurizr.webapp.graph import view_graph

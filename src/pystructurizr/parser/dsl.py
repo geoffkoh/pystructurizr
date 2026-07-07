@@ -690,8 +690,10 @@ class _Parser:
     def _parse_view(self, view_type: ViewType) -> View:
         self._advance()  # consume keyword
         element_id = ""
-        if self._match(WILDCARD):
-            self._advance()  # deployment/landscape scope "*" means unscoped
+        if view_type == ViewType.SYSTEM_LANDSCAPE:
+            pass  # landscape views are unscoped; the first token is the key
+        elif self._match(WILDCARD):
+            self._advance()  # deployment scope "*" means unscoped
         elif self._match(IDENT):
             raw_id = self._advance().value
             element_id = self._id_map.get(raw_id, raw_id)

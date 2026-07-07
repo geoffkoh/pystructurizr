@@ -72,7 +72,9 @@ function toFlow(
     // nested boundaries (expanded containers, deployment nodes) do not.
     const isRootBoundary = isBoundary && !n.parentId;
     const target =
-      isRootBoundary && !n.data.expanded ? parentView : drillTarget(n, views);
+      isRootBoundary && !n.data.expanded
+        ? parentView
+        : drillTarget(n, views, view);
     return {
       id: n.id,
       type: isBoundary ? "boundary" : "element",

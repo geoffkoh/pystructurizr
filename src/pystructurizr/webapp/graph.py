@@ -30,6 +30,7 @@ ReactFlowData = dict[str, Any]
 
 _SUPPORTED_TYPES = frozenset(
     {
+        ViewType.SYSTEM_LANDSCAPE,
         ViewType.SYSTEM_CONTEXT,
         ViewType.CONTAINER,
         ViewType.COMPONENT,
@@ -45,8 +46,8 @@ def is_supported(view: View) -> bool:
         view: The view to check.
 
     Returns:
-        ``True`` for ``systemContext``, ``container``, ``component`` and
-        ``deployment`` views; ``False`` otherwise.
+        ``True`` for ``systemLandscape``, ``systemContext``, ``container``,
+        ``component`` and ``deployment`` views; ``False`` otherwise.
     """
     return view.type in _SUPPORTED_TYPES
 
