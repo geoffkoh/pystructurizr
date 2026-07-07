@@ -539,6 +539,18 @@ button {
   margin-left: 5px;
 }
 
+.boundary__resize-line {
+  border-color: var(--accent) !important;
+}
+
+.boundary__resize-handle {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 2px !important;
+  background: var(--panel) !important;
+  border: 1.5px solid var(--accent) !important;
+}
+
 /* ---- Breadcrumb ---- */
 .breadcrumb {
   display: flex;

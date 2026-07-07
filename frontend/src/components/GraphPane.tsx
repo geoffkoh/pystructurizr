@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -59,6 +59,7 @@ function toFlow(
   views: ViewInfo[],
   workspace: Workspace | null,
   onToggleExpand: (id: string, expand: boolean) => void,
+  onGeometryChange: () => void,
 ): { nodes: Node[]; edges: Edge[] } {
   const anyMissingPosition = data.nodes.some((n) => n.position === undefined);
   const trail = buildTrail(view, views, workspace);
@@ -82,13 +83,14 @@ function toFlow(
       ...(n.parentId
         ? { parentNode: n.parentId, extent: "parent" as const }
         : {}),
-      selectable: !isBoundary,
+      ...(n.size ? { style: { ...n.size } } : {}),
       data: {
         ...n.data,
         boundaryType,
         drillKey: target?.key,
         drillLabel: target ? crumbLabel(target, workspace) : undefined,
         onToggleExpand,
+        onGeometryChange,
       },
     };
   });
@@ -212,17 +214,32 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     [view],
   );
 
-  // Autosave the whole layout when a drag finishes. Positions are stored
-  // absolute so they survive changes in nesting.
-  const handleNodeDragStop = useCallback(() => {
+  // Autosave the whole layout when a drag or resize finishes. Positions
+  // are stored absolute so they survive changes in nesting; boundary
+  // dimensions are stored alongside. The ref keeps the resize callback
+  // (captured in node data) reading fresh state.
+  const nodesRef = useRef<Node[]>(nodes);
+  nodesRef.current = nodes;
+
+  const saveCurrentLayout = useCallback(() => {
     if (!view) return;
-    saveLayout(view.key, absolutePositions(nodes))
+    const current = nodesRef.current;
+    const sizes: Record<string, [number, number]> = {};
+    for (const node of current) {
+      if (node.type !== "boundary") continue;
+      const width = node.width ?? Number(node.style?.width);
+      const height = node.height ?? Number(node.style?.height);
+      if (width > 0 && height > 0) {
+        sizes[node.id] = [Math.round(width), Math.round(height)];
+      }
+    }
+    saveLayout(view.key, absolutePositions(current), sizes)
       .then(() => {
         setLayoutState("saved");
         window.setTimeout(() => setLayoutState("idle"), 1500);
       })
       .catch(() => setLayoutState("failed"));
-  }, [view, nodes]);
+  }, [view]);
 
   const handleResetLayout = useCallback(() => {
     if (!view) return;
@@ -295,7 +312,14 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     getViewGraph(view.key, expandedIds)
       .then((data) => {
         if (cancelled) return;
-        const flow = toFlow(data, view, views, workspace, handleToggleExpand);
+        const flow = toFlow(
+          data,
+          view,
+          views,
+          workspace,
+          handleToggleExpand,
+          saveCurrentLayout,
+        );
         setNodes(flow.nodes);
         setEdges(flow.edges);
         setStatus("ready");
@@ -318,6 +342,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     expandedIds,
     layoutEpoch,
     handleToggleExpand,
+    saveCurrentLayout,
     setNodes,
     setEdges,
   ]);
@@ -400,7 +425,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
-        onNodeDragStop={handleNodeDragStop}
+        onNodeDragStop={saveCurrentLayout}
         fitView
         minZoom={0.1}
         proOptions={{ hideAttribution: true }}

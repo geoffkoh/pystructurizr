@@ -106,17 +106,18 @@ export function deleteLayout(key: string): Promise<{ reset: string }> {
   );
 }
 
-/** POST /api/views/{key}/layout -> persist dragged node positions. */
+/** POST /api/views/{key}/layout -> persist node positions and boundary sizes. */
 export function saveLayout(
   key: string,
   positions: Record<string, [number, number]>,
+  sizes: Record<string, [number, number]> = {},
 ): Promise<LayoutResult> {
   return request<LayoutResult>(
     `/api/views/${encodeURIComponent(key)}/layout`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positions }),
+      body: JSON.stringify({ positions, sizes }),
     },
   );
 }

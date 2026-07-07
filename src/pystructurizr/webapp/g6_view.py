@@ -623,6 +623,7 @@ def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
         )
 
     _apply_styles(workspace, nodes)
+    _attach_stored_sizes(view, nodes)
     return {"nodes": nodes, "edges": edges}
 
 
@@ -695,19 +696,21 @@ def to_g6_data(
     enterprise_id: str | None = None
     if view.type == ViewType.SYSTEM_LANDSCAPE and workspace.enterprise is not None:
         enterprise_id = "__enterprise__"
-        nodes.append(
-            {
-                "id": enterprise_id,
-                "data": {
-                    "label": workspace.enterprise.name,
-                    "kind": "boundary",
-                    "technology": "",
-                    "description": "",
-                    "tags": [],
-                    "boundaryLabel": "Enterprise",
-                },
-            }
-        )
+        enterprise_node: G6Node = {
+            "id": enterprise_id,
+            "data": {
+                "label": workspace.enterprise.name,
+                "kind": "boundary",
+                "technology": "",
+                "description": "",
+                "tags": [],
+                "boundaryLabel": "Enterprise",
+            },
+        }
+        xy = positions.get(enterprise_id)
+        if xy is not None:
+            enterprise_node["style"] = {"x": xy[0], "y": xy[1]}
+        nodes.append(enterprise_node)
 
     boundary_id: str | None = None
     scope = _boundary_scope(workspace, view)
@@ -777,7 +780,44 @@ def to_g6_data(
                     )
 
     _apply_styles(workspace, nodes)
+    _attach_stored_sizes(view, nodes)
     return {"nodes": nodes, "edges": _edges(workspace, visible, parents)}
+
+
+def apply_sizes(view: View, sizes: dict[str, tuple[int, int]]) -> None:
+    """Update view.element_views with the given id → (width, height) sizes.
+
+    Adds a ViewElement for any id not already present; used for resizable
+    boundary nodes whose dimensions are persisted alongside positions.
+    """
+    existing = {ve.id: ve for ve in view.element_views}
+    for eid, (width, height) in sizes.items():
+        ve = existing.get(eid)
+        if ve is None:
+            ve = ViewElement(id=eid, width=width, height=height)
+            view.element_views.append(ve)
+            existing[eid] = ve
+        else:
+            ve.width = width
+            ve.height = height
+
+
+def _attach_stored_sizes(view: View, nodes: list[G6Node]) -> None:
+    """Overlay persisted width/height onto boundary nodes, in place."""
+    sizes = {
+        ve.id: (ve.width, ve.height)
+        for ve in view.element_views
+        if ve.width is not None and ve.height is not None
+    }
+    if not sizes:
+        return
+    for node in nodes:
+        if node["data"].get("kind") != "boundary":
+            continue
+        size = sizes.get(node["id"])
+        if size is not None:
+            style = node.setdefault("style", {})
+            style["width"], style["height"] = size
 
 
 def apply_positions(view: View, positions: dict[str, tuple[int, int]]) -> None:
