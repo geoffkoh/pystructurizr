@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pystructurizr.models import View, Workspace
-from pystructurizr.webapp.g6_view import apply_positions
+from pystructurizr.webapp.g6_view import apply_positions, apply_sizes
 from pystructurizr.webapp import graph
 from pystructurizr.webapp.loader import (
     WorkspaceLoadError,
@@ -72,6 +72,8 @@ class LayoutRequest(BaseModel):
     """Body for ``POST /api/views/{key}/layout``."""
 
     positions: dict[str, tuple[int, int]]
+    # Boundary node dimensions, persisted alongside positions.
+    sizes: dict[str, tuple[int, int]] = {}
 
 
 def _get_state(request: Request) -> AppState:
@@ -233,13 +235,18 @@ def _apply_saved_layout(state: AppState) -> None:
         view = views_by_key.get(key)
         if view is None or not isinstance(positions, dict):
             continue
+        entries = {
+            eid: geometry
+            for eid, geometry in positions.items()
+            if isinstance(geometry, list) and len(geometry) in (2, 4)
+        }
         apply_positions(
             view,
-            {
-                eid: (int(xy[0]), int(xy[1]))
-                for eid, xy in positions.items()
-                if isinstance(xy, list) and len(xy) == 2
-            },
+            {eid: (int(g[0]), int(g[1])) for eid, g in entries.items()},
+        )
+        apply_sizes(
+            view,
+            {eid: (int(g[2]), int(g[3])) for eid, g in entries.items() if len(g) == 4},
         )
 
 
@@ -376,11 +383,18 @@ def create_app(
             raise HTTPException(status_code=409, detail="No source file loaded")
         view = _find_view(workspace, key)
         apply_positions(view, dict(body.positions))
+        apply_sizes(view, dict(body.sizes))
         _invalidate_view_cache(state, key)
 
         sidecar = _layout_sidecar(state.current_path)
         saved = _read_layout_sidecar(state.current_path)
-        saved[key] = {eid: [int(x), int(y)] for eid, (x, y) in body.positions.items()}
+        entries: dict[str, list[int]] = {
+            eid: [int(x), int(y)] for eid, (x, y) in body.positions.items()
+        }
+        for eid, (width, height) in body.sizes.items():
+            if eid in entries:
+                entries[eid] += [int(width), int(height)]
+        saved[key] = entries
         sidecar.write_text(
             json.dumps({"version": 1, "views": saved}, indent=2, sort_keys=True),
             encoding="utf-8",
@@ -397,7 +411,9 @@ def create_app(
             raise HTTPException(status_code=409, detail="No source file loaded")
         view = _find_view(workspace, key)
         view.element_views = [
-            ve for ve in view.element_views if ve.x is None and ve.y is None
+            ve
+            for ve in view.element_views
+            if ve.x is None and ve.y is None and ve.width is None and ve.height is None
         ]
         _invalidate_view_cache(state, key)
 

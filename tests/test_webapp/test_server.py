@@ -229,6 +229,35 @@ def test_layout_survives_live_reload(client: TestClient, root: Path) -> None:
     assert positions["customer"] == {"x": 10, "y": 20}
 
 
+def test_layout_persists_boundary_sizes(client: TestClient, root: Path) -> None:
+    _load(client)
+    response = client.post(
+        "/api/views/Containers/layout",
+        json={
+            "positions": {"bank": [10, 20], "webapp": [50, 80]},
+            "sizes": {"bank": [900, 600]},
+        },
+    )
+    assert response.status_code == 200
+
+    graph = client.get("/api/views/Containers/graph").json()
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    assert by_id["bank"]["size"] == {"width": 900, "height": 600}
+    assert "size" not in by_id["webapp"]
+
+    # A fresh session restores the size from the sidecar.
+    fresh = TestClient(create_app(root=root))
+    fresh.post("/api/load", json={"path": "example.dsl"})
+    graph = fresh.get("/api/views/Containers/graph").json()
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    assert by_id["bank"]["size"] == {"width": 900, "height": 600}
+
+    # Delete clears sizes along with positions.
+    client.delete("/api/views/Containers/layout")
+    graph = client.get("/api/views/Containers/graph").json()
+    assert all("size" not in n for n in graph["nodes"])
+
+
 def test_delete_layout_returns_to_auto_layout(client: TestClient, root: Path) -> None:
     _load(client)
     client.post(

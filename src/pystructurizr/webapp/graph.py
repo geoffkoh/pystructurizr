@@ -87,6 +87,8 @@ def view_graph(
         style = g6_node.get("style")
         if style is not None and "x" in style and "y" in style:
             node["position"] = {"x": style["x"], "y": style["y"]}
+        if style is not None and "width" in style and "height" in style:
+            node["size"] = {"width": style["width"], "height": style["height"]}
         nodes.append(node)
 
     edges: list[ReactFlowEdge] = []

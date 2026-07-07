@@ -219,9 +219,22 @@ export function normalizeStoredPositions(nodes: Node[], edges: Edge[]): Node[] {
   });
   if (multiLevel) return layoutGraph(nodes, edges);
 
+  const nodesById = new Map(nodes.map((n) => [n.id, n]));
   const groups = new Map<string, { position: Point; size: Size }>();
   for (const [parentId, children] of childrenOf) {
     if (parentId === undefined) continue;
+    // A user-resized boundary carries its stored geometry; honour it and
+    // only fall back to the children's bounding box otherwise.
+    const group = nodesById.get(parentId);
+    const storedWidth = Number(group?.style?.width);
+    const storedHeight = Number(group?.style?.height);
+    if (group && storedWidth > 0 && storedHeight > 0) {
+      groups.set(parentId, {
+        position: group.position,
+        size: { width: storedWidth, height: storedHeight },
+      });
+      continue;
+    }
     let maxX = 0;
     let maxY = 0;
     let minX = Number.POSITIVE_INFINITY;

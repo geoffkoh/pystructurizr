@@ -58,6 +58,8 @@ export interface GNode {
   parentId?: string;
   /** Usually ABSENT; when missing the frontend runs its own layout. */
   position?: { x: number; y: number };
+  /** Persisted boundary dimensions, when the user resized it. */
+  size?: { width: number; height: number };
 }
 
 /** A React Flow edge as returned by GET /api/views/{key}/graph. */
