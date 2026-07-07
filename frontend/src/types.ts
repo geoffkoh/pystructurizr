@@ -81,6 +81,15 @@ export interface LayoutResult {
   saved: string;
 }
 
+/** Response body from GET /api/status (live-reload heartbeat). */
+export interface StatusResult {
+  path: string | null;
+  /** Increments on every successful server-side reload. */
+  generation: number;
+  /** Parse error from the last failed reload; old workspace still served. */
+  error: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Workspace model (GET /api/workspace). Only the fields used by the element
 // tree are declared strictly; the full dataclass asdict payload carries more.

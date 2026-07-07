@@ -8,6 +8,7 @@ import type {
   GraphData,
   LayoutResult,
   LoadResult,
+  StatusResult,
   ViewInfo,
   Workspace,
 } from "./types";
@@ -67,6 +68,11 @@ export function loadFile(path: string): Promise<LoadResult> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
   });
+}
+
+/** GET /api/status -> live-reload heartbeat for the loaded workspace. */
+export function getStatus(): Promise<StatusResult> {
+  return request<StatusResult>("/api/status");
 }
 
 /** GET /api/workspace -> the full loaded workspace model. */
