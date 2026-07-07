@@ -1,5 +1,8 @@
 workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture for a systematic hedge fund" {
 
+    !docs docs
+    !adrs adrs
+
     model {
         enterprise "Quantia Capital"
 

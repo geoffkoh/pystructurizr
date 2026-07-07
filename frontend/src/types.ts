@@ -136,8 +136,31 @@ export interface WorkspaceModel {
   relationships: Relationship[];
 }
 
+export interface DocSection {
+  content: string;
+  format: string;
+  title: string;
+  filename: string;
+  order: number;
+}
+
+export interface DocDecision {
+  id: string;
+  title: string;
+  date: string;
+  status: string;
+  content: string;
+  format: string;
+}
+
+export interface WorkspaceDocumentation {
+  sections: DocSection[];
+  decisions: DocDecision[];
+}
+
 export interface Workspace {
   name: string;
   description: string;
   model: WorkspaceModel;
+  documentation: WorkspaceDocumentation;
 }
