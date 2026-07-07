@@ -201,6 +201,71 @@ def test_styles_block_skips_unknown_properties():
     assert ws.views.configuration.styles.element_styles[0].background == "#123456"
 
 
+def test_docs_and_adrs_directives_attach_documentation(tmp_path: Path):
+    docs = tmp_path / "docs"
+    adrs = tmp_path / "adrs"
+    docs.mkdir()
+    adrs.mkdir()
+    (docs / "02-details.md").write_text("# Details\n\nBody.", encoding="utf-8")
+    (docs / "01-intro.md").write_text("# Introduction\n\nHello.", encoding="utf-8")
+    (adrs / "0001-use-adrs.md").write_text(
+        "# 1. Use ADRs\n\nDate: 2026-05-04\n\n## Status\n\nAccepted\n\n"
+        "## Context\n\nBecause.",
+        encoding="utf-8",
+    )
+    main = tmp_path / "workspace.dsl"
+    main.write_text(
+        """
+        workspace "Docs" {
+            !docs docs
+            !adrs adrs
+            model {
+                s = softwareSystem "S"
+            }
+            views {
+                systemContext s ctx { include * }
+            }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    ws = parse_dsl_file(main)
+    sections = ws.documentation.sections
+    assert [sec.title for sec in sections] == ["Introduction", "Details"]
+    assert sections[0].order == 1
+    assert sections[0].filename == "01-intro.md"
+    decision = ws.documentation.decisions[0]
+    assert decision.id == "1"
+    assert decision.title == "Use ADRs"
+    assert decision.date == "2026-05-04"
+    assert decision.status == "Accepted"
+    # The rest of the DSL still parsed normally.
+    assert ws.software_systems[0].name == "S"
+    assert len(ws.views) == 1
+
+
+def test_docs_directive_without_file_context_raises():
+    with pytest.raises(ParseError, match="file context"):
+        parse_dsl('workspace "W" {\n!docs docs\n}')
+
+
+def test_docs_files_are_watched_for_live_reload(tmp_path: Path):
+    from pystructurizr.parser.dsl import collect_source_files
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("# A", encoding="utf-8")
+    main = tmp_path / "workspace.dsl"
+    main.write_text(
+        'workspace "W" {\n!docs docs\nmodel { s = softwareSystem "S" } }',
+        encoding="utf-8",
+    )
+    files = collect_source_files(main)
+    assert main.resolve() in files
+    assert (docs / "a.md").resolve() in files
+
+
 def test_relationship_technology():
     dsl = """
     workspace {

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from pystructurizr.parser.docs import load_decisions, load_sections, markdown_files
 from pystructurizr.models import (
     AutomaticLayout,
     Border,
@@ -857,6 +858,11 @@ _INCLUDE_RE = re.compile(
     r'^[ \t]*!include[ \t]+(?P<target>"[^"]+"|\S+)[ \t]*$', re.MULTILINE
 )
 
+_DOCS_RE = re.compile(
+    r'^[ \t]*!(?P<kind>docs|adrs)[ \t]+(?P<target>"[^"]+"|\S+)[ \t]*$',
+    re.MULTILINE,
+)
+
 
 def _expand_includes(
     source: str, base_dir: Path | None, stack: tuple[Path, ...]
@@ -903,14 +909,37 @@ def parse_dsl(source: str, base_dir: str | Path | None = None) -> Workspace:
 
     Args:
         source: The DSL text.
-        base_dir: Directory that ``!include`` paths resolve against. When
-            ``None`` (parsing a bare string), ``!include`` raises
+        base_dir: Directory that ``!include``, ``!docs`` and ``!adrs``
+            paths resolve against (directives in included fragments resolve
+            against the root file's directory). When ``None`` (parsing a
+            bare string), any of these directives raises
             :class:`ParseError`.
     """
     resolved = Path(base_dir).resolve() if base_dir is not None else None
     flattened = _expand_includes(source, resolved, ())
+
+    doc_dirs: list[tuple[str, Path]] = []
+
+    def extract_docs(match: re.Match[str]) -> str:
+        target = match.group("target").strip('"')
+        if resolved is None:
+            raise ParseError(
+                f"!{match.group('kind')} {target!r} requires a file context; "
+                "parse from a file instead of a string"
+            )
+        doc_dirs.append((match.group("kind"), (resolved / target).resolve()))
+        return ""
+
+    flattened = _DOCS_RE.sub(extract_docs, flattened)
     tokens = _tokenize(flattened)
-    return _Parser(tokens).parse()
+    workspace = _Parser(tokens).parse()
+
+    for kind, directory in doc_dirs:
+        if kind == "docs":
+            workspace.documentation.sections.extend(load_sections(directory))
+        else:
+            workspace.documentation.decisions.extend(load_decisions(directory))
+    return workspace
 
 
 def parse_dsl_file(path: str | Path) -> Workspace:
@@ -945,6 +974,13 @@ def collect_source_files(path: str | Path) -> list[Path]:
             included = (current.parent / target).resolve()
             if included.is_file():
                 visit(included)
+        for match in _DOCS_RE.finditer(text):
+            target = match.group("target").strip('"')
+            directory = (root.parent / target).resolve()
+            for doc in markdown_files(directory):
+                if doc not in seen:
+                    seen.add(doc)
+                    ordered.append(doc)
 
     visit(root)
     return ordered

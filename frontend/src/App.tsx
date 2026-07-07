@@ -9,10 +9,11 @@ import {
   loadFile,
 } from "./api";
 import type { ViewInfo, Workspace } from "./types";
+import { DocsPane } from "./components/DocsPane";
 import { ElementTree } from "./components/ElementTree";
 import { FilePicker } from "./components/FilePicker";
 import { GraphPane } from "./components/GraphPane";
-import { TopBar } from "./components/TopBar";
+import { TopBar, type AppPage } from "./components/TopBar";
 import { ViewList } from "./components/ViewList";
 
 /** How often to ask the server whether the loaded source changed on disk. */
@@ -31,6 +32,7 @@ export default function App() {
   const [selectedView, setSelectedView] = useState<ViewInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
+  const [page, setPage] = useState<AppPage>("diagrams");
   const generationRef = useRef(0);
 
   // Load the file list once on mount.
@@ -102,6 +104,7 @@ export default function App() {
       setCurrentPath(result.path);
       setViews(result.views);
       setSelectedView(null);
+      setPage("diagrams");
       const [ws, status] = await Promise.all([getWorkspace(), getStatus()]);
       setWorkspace(ws);
       generationRef.current = status.generation;
@@ -114,7 +117,14 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar workspaceName={workspace?.name ?? null} filePath={currentPath} />
+      <TopBar
+        workspaceName={workspace?.name ?? null}
+        filePath={currentPath}
+        page={page}
+        onPageChange={setPage}
+        sectionCount={workspace?.documentation.sections.length ?? 0}
+        decisionCount={workspace?.documentation.decisions.length ?? 0}
+      />
       <div className="body">
         <aside className="sidebar">
           {error ? <div className="error">{error}</div> : null}
@@ -137,12 +147,16 @@ export default function App() {
           <ElementTree workspace={workspace} />
         </aside>
         <main className="main">
-          <GraphPane
-            view={selectedView}
-            views={views}
-            workspace={workspace}
-            onNavigate={setSelectedView}
-          />
+          {page === "diagrams" ? (
+            <GraphPane
+              view={selectedView}
+              views={views}
+              workspace={workspace}
+              onNavigate={setSelectedView}
+            />
+          ) : (
+            <DocsPane workspace={workspace} mode={page} />
+          )}
         </main>
       </div>
     </div>
