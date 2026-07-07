@@ -633,6 +633,17 @@ button {
   cursor: default;
 }
 
+.layout-status {
+  font-size: 11px;
+  color: #2e7d32;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.layout-status--failed {
+  color: var(--danger);
+}
+
 .edge-style__divider {
   width: 1px;
   height: 16px;

@@ -98,6 +98,14 @@ export function getViewGraph(
   );
 }
 
+/** DELETE /api/views/{key}/layout -> discard saved positions for a view. */
+export function deleteLayout(key: string): Promise<{ reset: string }> {
+  return request<{ reset: string }>(
+    `/api/views/${encodeURIComponent(key)}/layout`,
+    { method: "DELETE" },
+  );
+}
+
 /** POST /api/views/{key}/layout -> persist dragged node positions. */
 export function saveLayout(
   key: string,

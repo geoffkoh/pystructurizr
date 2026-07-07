@@ -179,6 +179,70 @@ def test_status_keeps_old_workspace_on_parse_error(
     assert client.get("/api/workspace").json()["name"] == "Internet Banking"
 
 
+def test_layout_saves_to_sidecar_and_restores_on_reload(
+    client: TestClient, root: Path
+) -> None:
+    _load(client)
+    response = client.post(
+        "/api/views/SystemContext/layout",
+        json={"positions": {"customer": [100, 200], "bank": [300, 400]}},
+    )
+    assert response.status_code == 200
+    sidecar = root / "example.layout.json"
+    assert sidecar.is_file()
+
+    # The current session serves the positions...
+    graph = client.get("/api/views/SystemContext/graph").json()
+    positions = {n["id"]: n.get("position") for n in graph["nodes"]}
+    assert positions["customer"] == {"x": 100, "y": 200}
+
+    # ...and so does a brand new session loading the same source.
+    fresh = TestClient(create_app(root=root))
+    fresh.post("/api/load", json={"path": "example.dsl"})
+    graph = fresh.get("/api/views/SystemContext/graph").json()
+    positions = {n["id"]: n.get("position") for n in graph["nodes"]}
+    assert positions["customer"] == {"x": 100, "y": 200}
+    assert positions["bank"] == {"x": 300, "y": 400}
+
+
+def test_layout_sidecar_hidden_from_file_browser(
+    client: TestClient, root: Path
+) -> None:
+    _load(client)
+    client.post(
+        "/api/views/SystemContext/layout", json={"positions": {"customer": [1, 2]}}
+    )
+    assert "example.layout.json" not in client.get("/api/files").json()
+
+
+def test_layout_survives_live_reload(client: TestClient, root: Path) -> None:
+    _load(client)
+    client.post(
+        "/api/views/SystemContext/layout",
+        json={"positions": {"customer": [10, 20]}},
+    )
+    source = root / "example.dsl"
+    _touch_future(source)
+    assert client.get("/api/status").json()["generation"] == 1
+    graph = client.get("/api/views/SystemContext/graph").json()
+    positions = {n["id"]: n.get("position") for n in graph["nodes"]}
+    assert positions["customer"] == {"x": 10, "y": 20}
+
+
+def test_delete_layout_returns_to_auto_layout(client: TestClient, root: Path) -> None:
+    _load(client)
+    client.post(
+        "/api/views/SystemContext/layout",
+        json={"positions": {"customer": [10, 20]}},
+    )
+    response = client.delete("/api/views/SystemContext/layout")
+    assert response.status_code == 200
+    graph = client.get("/api/views/SystemContext/graph").json()
+    assert all("position" not in n for n in graph["nodes"])
+    # Sidecar removed once its last view entry is gone.
+    assert not (root / "example.layout.json").exists()
+
+
 def test_no_static_dir_serves_not_built_hint(root: Path, tmp_path: Path) -> None:
     missing = tmp_path / "does-not-exist"
     client = TestClient(create_app(root=root, static_dir=missing))
