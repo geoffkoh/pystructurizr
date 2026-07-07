@@ -549,3 +549,15 @@ button {
   color: var(--accent);
   font-weight: 600;
 }
+
+.edge-style__option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.edge-style__divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 6px;
+}

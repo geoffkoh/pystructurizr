@@ -20,6 +20,7 @@ import { buildTrail, crumbLabel, drillTarget } from "../navigation";
 import type { GraphData, ViewInfo, Workspace } from "../types";
 import { BoundaryNode } from "./BoundaryNode";
 import { ElementNode, type ElementNodeData } from "./ElementNode";
+import { ExportButtons } from "./ExportButtons";
 import { FloatingEdge, type FloatingEdgeData } from "./FloatingEdge";
 
 const NODE_TYPES: NodeTypes = { element: ElementNode, boundary: BoundaryNode };
@@ -320,6 +321,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
               {style.label}
             </button>
           ))}
+          <ExportButtons viewKey={view.key} />
         </Panel>
         <Background gap={16} />
         <Controls />
