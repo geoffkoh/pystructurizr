@@ -145,6 +145,8 @@ def _is_workspace_root(path: Path) -> bool:
     files declaring a ``workspace`` block are offered in the browser. JSON
     exports are always complete workspaces.
     """
+    if path.name.endswith(".layout.json"):
+        return False  # layout sidecars are not loadable workspaces
     if path.suffix.lower() == ".json":
         return True
     try:
@@ -201,6 +203,46 @@ def _begin_watching(state: AppState, path: Path) -> None:
     state.load_error = ""
 
 
+def _layout_sidecar(source: Path) -> Path:
+    """Path of the layout sidecar stored next to a workspace source."""
+    return source.with_name(f"{source.stem}.layout.json")
+
+
+def _read_layout_sidecar(source: Path) -> dict[str, dict[str, list[int]]]:
+    """Read the sidecar's ``{view_key: {element_id: [x, y]}}`` mapping."""
+    sidecar = _layout_sidecar(source)
+    if not sidecar.is_file():
+        return {}
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    views = data.get("views")
+    return views if isinstance(views, dict) else {}
+
+
+def _apply_saved_layout(state: AppState) -> None:
+    """Apply sidecar positions onto the loaded workspace's views."""
+    if state.workspace is None or state.current_path is None:
+        return
+    saved = _read_layout_sidecar(state.current_path)
+    if not saved:
+        return
+    views_by_key = {view.key: view for view in state.workspace.views}
+    for key, positions in saved.items():
+        view = views_by_key.get(key)
+        if view is None or not isinstance(positions, dict):
+            continue
+        apply_positions(
+            view,
+            {
+                eid: (int(xy[0]), int(xy[1]))
+                for eid, xy in positions.items()
+                if isinstance(xy, list) and len(xy) == 2
+            },
+        )
+
+
 def create_app(
     root: Path, initial: Path | None = None, static_dir: Path | None = None
 ) -> FastAPI:
@@ -224,6 +266,7 @@ def create_app(
         state.workspace = load_workspace(initial)
         state.current_path = initial
         _begin_watching(state, initial)
+        _apply_saved_layout(state)
 
     app.state.app_state = state
 
@@ -246,6 +289,7 @@ def create_app(
         state.current_path = path
         state.diagrams.clear()
         _begin_watching(state, path)
+        _apply_saved_layout(state)
         return {
             "path": path.relative_to(state.root).as_posix(),
             "name": workspace.name,
@@ -274,6 +318,7 @@ def create_app(
                 state.workspace = workspace
                 state.diagrams.clear()
                 _begin_watching(state, state.current_path)
+                _apply_saved_layout(state)
                 state.generation += 1
         return {
             "path": state.current_path.relative_to(state.root).as_posix(),
@@ -312,28 +357,64 @@ def create_app(
         state.diagrams[cache_key] = data
         return data
 
+    def _invalidate_view_cache(state: AppState, key: str) -> None:
+        for cached in [k for k in state.diagrams if k.split("::")[0] == key]:
+            state.diagrams.pop(cached)
+
     @app.post("/api/views/{key}/layout")
     def save_layout(
         key: str, body: LayoutRequest, state: AppState = Depends(_get_state)
     ) -> dict[str, str]:
-        """Persist node positions for a view to a sidecar layout JSON file."""
+        """Persist node positions for a view to the layout sidecar.
+
+        The sidecar (``<source>.layout.json``) holds a compact
+        ``{view_key: {element_id: [x, y]}}`` mapping, merged per view and
+        re-applied whenever the workspace is (re)loaded.
+        """
         workspace = _require_workspace(state)
+        if state.current_path is None:
+            raise HTTPException(status_code=409, detail="No source file loaded")
         view = _find_view(workspace, key)
         apply_positions(view, dict(body.positions))
-        for cached in [k for k in state.diagrams if k.split("::")[0] == key]:
-            state.diagrams.pop(cached)
+        _invalidate_view_cache(state, key)
 
-        if state.current_path is not None:
-            out_path = state.current_path.with_name(
-                f"{state.current_path.stem}.layout.json"
-            )
-        else:
-            out_path = state.root / "workspace.json"
-        out_path.write_text(
-            json.dumps(dataclasses.asdict(workspace), indent=2),
+        sidecar = _layout_sidecar(state.current_path)
+        saved = _read_layout_sidecar(state.current_path)
+        saved[key] = {eid: [int(x), int(y)] for eid, (x, y) in body.positions.items()}
+        sidecar.write_text(
+            json.dumps({"version": 1, "views": saved}, indent=2, sort_keys=True),
             encoding="utf-8",
         )
-        return {"saved": str(out_path)}
+        return {"saved": str(sidecar)}
+
+    @app.delete("/api/views/{key}/layout")
+    def delete_layout(
+        key: str, state: AppState = Depends(_get_state)
+    ) -> dict[str, str]:
+        """Discard saved positions for a view (back to auto-layout)."""
+        workspace = _require_workspace(state)
+        if state.current_path is None:
+            raise HTTPException(status_code=409, detail="No source file loaded")
+        view = _find_view(workspace, key)
+        view.element_views = [
+            ve for ve in view.element_views if ve.x is None and ve.y is None
+        ]
+        _invalidate_view_cache(state, key)
+
+        sidecar = _layout_sidecar(state.current_path)
+        saved = _read_layout_sidecar(state.current_path)
+        if key in saved:
+            del saved[key]
+            if saved:
+                sidecar.write_text(
+                    json.dumps(
+                        {"version": 1, "views": saved}, indent=2, sort_keys=True
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                sidecar.unlink(missing_ok=True)
+        return {"reset": key}
 
     _mount_static(app, static_dir)
     return app

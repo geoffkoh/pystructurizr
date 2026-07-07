@@ -317,6 +317,15 @@ def _edges(
     return edges
 
 
+def _stored_positions(view: View) -> dict[str, tuple[int, int]]:
+    """Positions persisted on the view's ViewElements, keyed by element id."""
+    return {
+        ve.id: (ve.x, ve.y)
+        for ve in view.element_views
+        if ve.x is not None and ve.y is not None
+    }
+
+
 # Implicit Structurizr tag per node kind, used for tag-based style matching.
 _IMPLICIT_TAGS: dict[str, str] = {
     "person": "Person",
@@ -403,6 +412,13 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
     nodes: list[G6Node] = []
     instance_refs: dict[str, str] = {}  # leaf id -> underlying model element id
     leaf_ids: set[str] = set()
+    positions = _stored_positions(view)
+
+    def place(node: G6Node) -> G6Node:
+        xy = positions.get(node["id"])
+        if xy is not None:
+            node["style"] = {"x": xy[0], "y": xy[1]}
+        return node
 
     def leaf(
         eid: str,
@@ -414,17 +430,19 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
         parent_id: str,
     ) -> None:
         nodes.append(
-            {
-                "id": eid,
-                "parentId": parent_id,
-                "data": {
-                    "label": label,
-                    "kind": kind,
-                    "technology": technology,
-                    "description": description,
-                    "tags": tags,
-                },
-            }
+            place(
+                {
+                    "id": eid,
+                    "parentId": parent_id,
+                    "data": {
+                        "label": label,
+                        "kind": kind,
+                        "technology": technology,
+                        "description": description,
+                        "tags": tags,
+                    },
+                }
+            )
         )
         leaf_ids.add(eid)
 
@@ -446,7 +464,7 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
         }
         if parent_id is not None:
             boundary["parentId"] = parent_id
-        nodes.append(boundary)
+        nodes.append(place(boundary))
         for infra in dn.infrastructure_nodes:
             leaf(
                 infra.id,
@@ -559,6 +577,8 @@ def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
     seen_nodes: set[str] = set()
     edges: list[G6Edge] = []
 
+    positions = _stored_positions(view)
+
     def add_node(eid: str) -> bool:
         if eid in seen_nodes:
             return True
@@ -568,7 +588,8 @@ def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
         ):
             return False
         seen_nodes.add(eid)
-        nodes.append(_node(eid, element, _element_kind(element)))
+        x, y = positions.get(eid, (None, None))
+        nodes.append(_node(eid, element, _element_kind(element), x, y))
         return True
 
     steps = sorted(
@@ -628,11 +649,7 @@ def to_g6_data(
 
     parents = _parent_ids(workspace)
     visible = _visible_ids(workspace, view)
-    positions: dict[str, tuple[int, int]] = {
-        ve.id: (ve.x, ve.y)
-        for ve in view.element_views
-        if ve.x is not None and ve.y is not None
-    }
+    positions = _stored_positions(view)
 
     def pos(eid: str) -> tuple[int | None, int | None]:
         xy = positions.get(eid)

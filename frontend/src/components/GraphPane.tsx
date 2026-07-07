@@ -14,7 +14,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { ApiError, getViewGraph } from "../api";
+import { ApiError, deleteLayout, getViewGraph, saveLayout } from "../api";
 import { layoutGraph, normalizeStoredPositions } from "../layout";
 import { buildTrail, crumbLabel, drillTarget } from "../navigation";
 import type { GraphData, ViewInfo, Workspace } from "../types";
@@ -111,6 +111,28 @@ function toFlow(
 }
 
 /**
+ * Absolute top-left positions for every node, resolving nested (parent-
+ * relative) coordinates by walking the parent chain. This is the format
+ * the layout sidecar stores, independent of the current nesting.
+ */
+function absolutePositions(nodes: Node[]): Record<string, [number, number]> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const positions: Record<string, [number, number]> = {};
+  for (const node of nodes) {
+    let x = node.position.x;
+    let y = node.position.y;
+    let parent = node.parentNode ? byId.get(node.parentNode) : undefined;
+    while (parent) {
+      x += parent.position.x;
+      y += parent.position.y;
+      parent = parent.parentNode ? byId.get(parent.parentNode) : undefined;
+    }
+    positions[node.id] = [Math.round(x), Math.round(y)];
+  }
+  return positions;
+}
+
+/**
  * Renders the selected view's graph with React Flow: nested C4 boundaries
  * (to any depth — deployment nodes, expanded containers), centre-anchored
  * floating edges, draggable nodes, zoom/pan, a breadcrumb for drill in/out
@@ -125,6 +147,11 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   );
   const [error, setError] = useState<string | null>(null);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(storedEdgeStyle);
+  const [layoutState, setLayoutState] = useState<"idle" | "saved" | "failed">(
+    "idle",
+  );
+  // Bumped by "reset layout" to force a refetch of the current view.
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
   // Expanded container ids, scoped to the view they were expanded in so a
   // view switch implicitly resets the expansion.
   const [expansion, setExpansion] = useState<{ key: string; ids: string[] }>({
@@ -184,6 +211,28 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     },
     [view],
   );
+
+  // Autosave the whole layout when a drag finishes. Positions are stored
+  // absolute so they survive changes in nesting.
+  const handleNodeDragStop = useCallback(() => {
+    if (!view) return;
+    saveLayout(view.key, absolutePositions(nodes))
+      .then(() => {
+        setLayoutState("saved");
+        window.setTimeout(() => setLayoutState("idle"), 1500);
+      })
+      .catch(() => setLayoutState("failed"));
+  }, [view, nodes]);
+
+  const handleResetLayout = useCallback(() => {
+    if (!view) return;
+    deleteLayout(view.key)
+      .then(() => {
+        setLayoutState("idle");
+        setLayoutEpoch((epoch) => epoch + 1);
+      })
+      .catch(() => setLayoutState("failed"));
+  }, [view]);
 
   // Routing is presentation-only, so it is applied on the way into React
   // Flow rather than baked into the edge state.
@@ -267,6 +316,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     views,
     workspace,
     expandedIds,
+    layoutEpoch,
     handleToggleExpand,
     setNodes,
     setEdges,
@@ -350,6 +400,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
+        onNodeDragStop={handleNodeDragStop}
         fitView
         minZoom={0.1}
         proOptions={{ hideAttribution: true }}
@@ -390,6 +441,24 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
             </button>
           ))}
           <ExportButtons viewKey={view.key} />
+          <span className="edge-style__divider" />
+          <button
+            className="edge-style__option"
+            title="Discard saved positions and re-run auto-layout"
+            onClick={handleResetLayout}
+          >
+            Reset layout
+          </button>
+          {layoutState !== "idle" ? (
+            <span
+              className={
+                "layout-status" +
+                (layoutState === "failed" ? " layout-status--failed" : "")
+              }
+            >
+              {layoutState === "saved" ? "Saved ✓" : "Save failed"}
+            </span>
+          ) : null}
         </Panel>
         {isDynamic && maxStep > 0 ? (
           <Panel position="bottom-center" className="anim-controls">
