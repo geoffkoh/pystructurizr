@@ -24,7 +24,11 @@ from pydantic import BaseModel
 from pystructurizr.models import View, Workspace
 from pystructurizr.webapp.g6_view import apply_positions
 from pystructurizr.webapp import graph
-from pystructurizr.webapp.loader import WorkspaceLoadError, load_workspace
+from pystructurizr.webapp.loader import (
+    WorkspaceLoadError,
+    load_workspace,
+    watched_files,
+)
 
 
 _SOURCE_SUFFIXES = frozenset({".dsl", ".json", ".structurizr"})
@@ -41,12 +45,21 @@ class AppState:
         current_path: The absolute path of the currently loaded source, if any.
         workspace: The currently loaded workspace, if any.
         diagrams: Per-view-key cache of computed React Flow graph data.
+        watch_files: Source files (root + !include targets) to watch.
+        watch_token: mtime fingerprint of watch_files at last (re)load.
+        generation: Bumped on every successful live reload so clients know
+            to refetch.
+        load_error: Parse error from the last failed live reload, if any.
     """
 
     root: Path
     current_path: Path | None = None
     workspace: Workspace | None = None
     diagrams: dict[str, dict[str, Any]] = field(default_factory=dict)
+    watch_files: list[Path] = field(default_factory=list)
+    watch_token: str = ""
+    generation: int = 0
+    load_error: str = ""
 
 
 class LoadRequest(BaseModel):
@@ -170,6 +183,24 @@ def _iter_source_files(root: Path) -> list[str]:
     return found
 
 
+def _watch_token(files: list[Path]) -> str:
+    """Fingerprint of the given files' mtimes, for change detection."""
+    parts: list[str] = []
+    for file in files:
+        try:
+            parts.append(f"{file}:{file.stat().st_mtime_ns}")
+        except OSError:
+            parts.append(f"{file}:missing")
+    return "|".join(parts)
+
+
+def _begin_watching(state: AppState, path: Path) -> None:
+    """Point live-reload watching at ``path`` and its include fragments."""
+    state.watch_files = watched_files(path)
+    state.watch_token = _watch_token(state.watch_files)
+    state.load_error = ""
+
+
 def create_app(
     root: Path, initial: Path | None = None, static_dir: Path | None = None
 ) -> FastAPI:
@@ -192,6 +223,7 @@ def create_app(
         initial = initial.resolve()
         state.workspace = load_workspace(initial)
         state.current_path = initial
+        _begin_watching(state, initial)
 
     app.state.app_state = state
 
@@ -213,10 +245,40 @@ def create_app(
         state.workspace = workspace
         state.current_path = path
         state.diagrams.clear()
+        _begin_watching(state, path)
         return {
             "path": path.relative_to(state.root).as_posix(),
             "name": workspace.name,
             "views": _views_index(workspace),
+        }
+
+    @app.get("/api/status")
+    def status(state: AppState = Depends(_get_state)) -> dict[str, Any]:
+        """Live-reload heartbeat: reload the workspace if its files changed.
+
+        Returns the loaded path, a ``generation`` counter that increments on
+        every successful reload (clients refetch when it changes), and the
+        parse error of the last failed reload, if any — the previous good
+        workspace stays served in that case.
+        """
+        if state.workspace is None or state.current_path is None:
+            return {"path": None, "generation": state.generation, "error": None}
+        current = _watch_token(state.watch_files)
+        if current != state.watch_token:
+            state.watch_token = current
+            try:
+                workspace = load_workspace(state.current_path)
+            except WorkspaceLoadError as exc:
+                state.load_error = str(exc)
+            else:
+                state.workspace = workspace
+                state.diagrams.clear()
+                _begin_watching(state, state.current_path)
+                state.generation += 1
+        return {
+            "path": state.current_path.relative_to(state.root).as_posix(),
+            "generation": state.generation,
+            "error": state.load_error or None,
         }
 
     @app.get("/api/workspace")

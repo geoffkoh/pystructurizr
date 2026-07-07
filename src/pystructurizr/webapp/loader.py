@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pystructurizr.models import Workspace
-from pystructurizr.parser.dsl import ParseError, parse_dsl_file
+from pystructurizr.parser.dsl import ParseError, collect_source_files, parse_dsl_file
 from pystructurizr.parser.json_parser import parse_json_file
 
 
@@ -50,3 +50,15 @@ def load_workspace(path: Path) -> Workspace:
     raise WorkspaceLoadError(
         f"Unsupported file type: {suffix or '(none)'}. Use .dsl, .structurizr or .json"
     )
+
+
+def watched_files(path: Path) -> list[Path]:
+    """Return the files that make up the workspace source at ``path``.
+
+    For DSL sources this is the file plus every transitive ``!include``
+    target; JSON exports are a single file. Used for live-reload change
+    detection.
+    """
+    if path.suffix.lower() == ".json":
+        return [path]
+    return collect_source_files(path)

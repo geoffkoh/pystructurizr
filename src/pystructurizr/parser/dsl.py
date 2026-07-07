@@ -891,3 +891,34 @@ def parse_dsl_file(path: str | Path) -> Workspace:
     """Read a .dsl file and parse it, resolving any ``!include`` directives."""
     path = Path(path).resolve()
     return parse_dsl(path.read_text(encoding="utf-8"), base_dir=path.parent)
+
+
+def collect_source_files(path: str | Path) -> list[Path]:
+    """Return ``path`` plus every file it (transitively) ``!include``s.
+
+    Best-effort: unreadable or missing include targets are skipped and
+    cycles are ignored, so this is safe to call on sources that would fail
+    to parse. Used by the web app to know which files to watch for
+    live-reload.
+    """
+    root = Path(path).resolve()
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+
+    def visit(current: Path) -> None:
+        if current in seen:
+            return
+        seen.add(current)
+        ordered.append(current)
+        try:
+            text = current.read_text(encoding="utf-8")
+        except OSError:
+            return
+        for match in _INCLUDE_RE.finditer(text):
+            target = match.group("target").strip('"')
+            included = (current.parent / target).resolve()
+            if included.is_file():
+                visit(included)
+
+    visit(root)
+    return ordered
