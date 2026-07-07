@@ -21,7 +21,7 @@ import type { GraphData, ViewInfo, Workspace } from "../types";
 import { BoundaryNode } from "./BoundaryNode";
 import { ElementNode, type ElementNodeData } from "./ElementNode";
 import { ExportButtons } from "./ExportButtons";
-import { FloatingEdge, type FloatingEdgeData } from "./FloatingEdge";
+import { FloatingEdge } from "./FloatingEdge";
 
 const NODE_TYPES: NodeTypes = { element: ElementNode, boundary: BoundaryNode };
 const EDGE_TYPES: EdgeTypes = { floating: FloatingEdge };
@@ -98,7 +98,7 @@ function toFlow(
     source: e.source,
     target: e.target,
     type: "floating",
-    data: { label: e.label || undefined } satisfies FloatingEdgeData,
+    data: { label: e.label || undefined, order: e.order },
     markerEnd: { type: MarkerType.ArrowClosed },
   }));
 
@@ -136,6 +136,38 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     [view, expansion],
   );
 
+  // Dynamic-view animation: null shows every step; otherwise steps beyond
+  // the current one are dimmed and the current one is highlighted.
+  const [animStep, setAnimStep] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    setAnimStep(null);
+    setPlaying(false);
+  }, [view?.key]);
+
+  const isDynamic = view?.type === "dynamic";
+  const maxStep = useMemo(
+    () =>
+      edges.reduce((max, edge) => {
+        const order = (edge.data as { order?: number } | undefined)?.order;
+        return order !== undefined && order > max ? order : max;
+      }, 0),
+    [edges],
+  );
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => {
+      setAnimStep((step) => {
+        const next = (step ?? 0) + 1;
+        if (next >= maxStep) setPlaying(false);
+        return Math.min(next, maxStep);
+      });
+    }, 1400);
+    return () => window.clearInterval(timer);
+  }, [playing, maxStep]);
+
   const handleEdgeStyle = useCallback((style: EdgeStyle) => {
     setEdgeStyle(style);
     window.localStorage.setItem(EDGE_STYLE_STORAGE_KEY, style);
@@ -157,12 +189,46 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   // Flow rather than baked into the edge state.
   const styledEdges = useMemo(
     () =>
-      edges.map((edge) => ({
-        ...edge,
-        data: { ...edge.data, pathStyle: edgeStyle },
-      })),
-    [edges, edgeStyle],
+      edges.map((edge) => {
+        const order = (edge.data as { order?: number } | undefined)?.order;
+        const animState =
+          isDynamic && animStep !== null && order !== undefined
+            ? order === animStep
+              ? ("active" as const)
+              : order < animStep
+                ? ("past" as const)
+                : ("future" as const)
+            : undefined;
+        return {
+          ...edge,
+          data: { ...edge.data, pathStyle: edgeStyle, animState },
+        };
+      }),
+    [edges, edgeStyle, isDynamic, animStep],
   );
+
+  // A node joins the animation at its earliest step; before that it dims.
+  const firstStepByNode = useMemo(() => {
+    const first = new Map<string, number>();
+    for (const edge of edges) {
+      const order = (edge.data as { order?: number } | undefined)?.order;
+      if (order === undefined) continue;
+      for (const id of [edge.source, edge.target]) {
+        const known = first.get(id);
+        if (known === undefined || order < known) first.set(id, order);
+      }
+    }
+    return first;
+  }, [edges]);
+
+  const styledNodes = useMemo(() => {
+    if (!isDynamic || animStep === null) return nodes;
+    return nodes.map((node) => {
+      const firstStep = firstStepByNode.get(node.id);
+      const future = firstStep !== undefined && firstStep > animStep;
+      return { ...node, className: future ? "anim-future" : undefined };
+    });
+  }, [nodes, isDynamic, animStep, firstStepByNode]);
 
   useEffect(() => {
     if (!view || !view.supported) {
@@ -277,7 +343,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     <div className="graph">
       <ReactFlow
         key={fitKey}
-        nodes={nodes}
+        nodes={styledNodes}
         edges={styledEdges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
@@ -325,6 +391,58 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
           ))}
           <ExportButtons viewKey={view.key} />
         </Panel>
+        {isDynamic && maxStep > 0 ? (
+          <Panel position="bottom-center" className="anim-controls">
+            <button
+              className="anim-controls__button"
+              onClick={() => {
+                setPlaying(false);
+                setAnimStep(null);
+              }}
+              disabled={animStep === null}
+            >
+              All
+            </button>
+            <button
+              className="anim-controls__button"
+              onClick={() => {
+                setPlaying(false);
+                setAnimStep((step) => Math.max(1, (step ?? 1) - 1));
+              }}
+              disabled={animStep === null || animStep <= 1}
+            >
+              ◀
+            </button>
+            <span className="anim-controls__step">
+              {animStep === null ? "All steps" : `Step ${animStep}/${maxStep}`}
+            </span>
+            <button
+              className="anim-controls__button"
+              onClick={() => {
+                setPlaying(false);
+                setAnimStep((step) => Math.min(maxStep, (step ?? 0) + 1));
+              }}
+              disabled={animStep !== null && animStep >= maxStep}
+            >
+              ▶
+            </button>
+            <button
+              className="anim-controls__button"
+              onClick={() => {
+                if (playing) {
+                  setPlaying(false);
+                } else {
+                  setAnimStep((step) =>
+                    step === null || step >= maxStep ? 1 : step,
+                  );
+                  setPlaying(true);
+                }
+              }}
+            >
+              {playing ? "Pause" : "Play"}
+            </button>
+          </Panel>
+        ) : null}
         <Background gap={16} />
         <Controls />
         <MiniMap

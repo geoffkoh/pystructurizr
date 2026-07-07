@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   container: "Containers",
   component: "Components",
   deployment: "Deployment",
+  dynamic: "Dynamic",
 };
 
 function findView(

@@ -471,6 +471,66 @@ class TestSystemLandscapeView:
         }
 
 
+class TestDynamicView:
+    @pytest.fixture
+    def dynamic_workspace(self, tmp_path: Path) -> Workspace:
+        dsl = """
+        workspace "Dyn" {
+            model {
+                u = person "User"
+                s = softwareSystem "Shop" {
+                    web = container "Web"
+                    api = container "API"
+                    db = container "DB"
+                }
+                u -> web "Uses"
+                web -> api "Calls" "HTTPS"
+                api -> db "Reads"
+            }
+            views {
+                dynamic s Checkout "Checkout flow" {
+                    u -> web "Adds items to the basket"
+                    web -> api "Places the order"
+                    api -> db
+                    autoLayout lr
+                }
+            }
+        }
+        """
+        path = tmp_path / "dyn.dsl"
+        path.write_text(dsl, encoding="utf-8")
+        return parse_dsl_file(path)
+
+    def test_parser_captures_ordered_steps(self, dynamic_workspace: Workspace) -> None:
+        view = dynamic_workspace.views[0]
+        assert view.key == "Checkout"
+        assert [rv.order for rv in view.relationship_views] == ["1", "2", "3"]
+        assert view.relationship_views[0].id == "u__web"
+        assert view.auto_layout is not None  # autoLayout still parsed after steps
+
+    def test_edges_carry_order_and_numbered_labels(
+        self, dynamic_workspace: Workspace
+    ) -> None:
+        view = dynamic_workspace.views[0]
+        data = to_g6_data(dynamic_workspace, view)
+        labels = [e["data"]["label"] for e in data["edges"]]
+        assert labels[0] == "1. Adds items to the basket"
+        assert labels[1] == "2. Places the order"
+        # Step without a description falls back to the model relationship's.
+        assert labels[2] == "3. Reads"
+        assert [e["data"]["order"] for e in data["edges"]] == [1, 2, 3]
+
+    def test_nodes_are_referenced_elements_flat(
+        self, dynamic_workspace: Workspace
+    ) -> None:
+        view = dynamic_workspace.views[0]
+        data = to_g6_data(dynamic_workspace, view)
+        by_id = {n["id"]: n for n in data["nodes"]}
+        assert set(by_id) == {"u", "web", "api", "db"}
+        assert all("parentId" not in n for n in data["nodes"])
+        assert by_id["web"]["data"]["kind"] == "container"
+
+
 class TestRankDirection:
     def test_defaults_to_top_bottom(self, workspace: Workspace) -> None:
         from pystructurizr.webapp.graph import view_graph

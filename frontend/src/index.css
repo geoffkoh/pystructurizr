@@ -412,6 +412,58 @@ button {
   padding-right: 24px;
 }
 
+.edge-label--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.edge-label--future {
+  opacity: 0.15;
+}
+
+/* ---- Dynamic view animation ---- */
+.react-flow__node.anim-future {
+  opacity: 0.18;
+}
+
+.anim-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  box-shadow: var(--shadow);
+}
+
+.anim-controls__button {
+  border: none;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  padding: 3px 8px;
+  border-radius: 5px;
+}
+
+.anim-controls__button:hover {
+  background: var(--bg);
+}
+
+.anim-controls__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.anim-controls__step {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 64px;
+  text-align: center;
+}
+
 /* ---- C4 person silhouette ---- */
 .person {
   display: flex;

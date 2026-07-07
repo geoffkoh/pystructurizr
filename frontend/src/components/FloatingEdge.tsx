@@ -15,6 +15,8 @@ export interface FloatingEdgeData {
   label?: string;
   /** Which path renderer to use; anchoring is floating in all cases. */
   pathStyle?: "default" | "straight" | "step" | "smoothstep";
+  /** Dynamic-view animation state for this edge's step. */
+  animState?: "past" | "active" | "future";
 }
 
 interface Point {
@@ -118,13 +120,27 @@ export function FloatingEdge({
     [path, labelX, labelY] = getBezierPath(params);
   }
 
+  const animState = data?.animState;
+  const edgeStyle = {
+    ...style,
+    ...(animState === "active"
+      ? { stroke: "#1976d2", strokeWidth: 2.4 }
+      : animState === "future"
+        ? { opacity: 0.08 }
+        : {}),
+  };
+
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={edgeStyle} />
       {data?.label ? (
         <EdgeLabelRenderer>
           <div
-            className="edge-label nodrag nopan"
+            className={
+              "edge-label nodrag nopan" +
+              (animState === "active" ? " edge-label--active" : "") +
+              (animState === "future" ? " edge-label--future" : "")
+            }
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             }}

@@ -529,6 +529,82 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
     return {"nodes": nodes, "edges": edges}
 
 
+def _element_kind(element: object) -> str:
+    """Node kind for any static-structure element instance."""
+    if isinstance(element, Person):
+        return _person_kind(element)
+    if isinstance(element, SoftwareSystem):
+        return _system_kind(element)
+    if isinstance(element, Container):
+        return "container"
+    return "component"
+
+
+def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
+    """Build graph data for a dynamic view.
+
+    Steps come from the view's ordered RelationshipViews; each becomes an
+    edge labelled "<order>. <description>" carrying its numeric order so
+    the frontend can animate the sequence. Nodes are the elements the
+    steps reference, rendered flat (no boundaries). Step ids encode their
+    endpoints as ``src__dst`` (see the DSL parser); ids that instead match
+    a model relationship are resolved through it.
+    """
+    rel_by_id = {rel.id: rel for rel in workspace.relationships if rel.id}
+    rel_by_pair: dict[tuple[str, str], Relationship] = {}
+    for rel in workspace.relationships:
+        rel_by_pair.setdefault((rel.source_id, rel.destination_id), rel)
+
+    nodes: list[G6Node] = []
+    seen_nodes: set[str] = set()
+    edges: list[G6Edge] = []
+
+    def add_node(eid: str) -> bool:
+        if eid in seen_nodes:
+            return True
+        element = workspace.find_element(eid)
+        if element is None or not isinstance(
+            element, Person | SoftwareSystem | Container | Component
+        ):
+            return False
+        seen_nodes.add(eid)
+        nodes.append(_node(eid, element, _element_kind(element)))
+        return True
+
+    steps = sorted(
+        view.relationship_views,
+        key=lambda rv: int(rv.order) if rv.order.isdigit() else 0,
+    )
+    for index, rv in enumerate(steps, start=1):
+        if rv.id in rel_by_id:
+            rel = rel_by_id[rv.id]
+            src, dst = rel.source_id, rel.destination_id
+        elif "__" in rv.id:
+            src, _, dst = rv.id.partition("__")
+        else:
+            continue
+        if not add_node(src) or not add_node(dst):
+            continue
+        order = int(rv.order) if rv.order.isdigit() else index
+        model_rel = rel_by_pair.get((src, dst))
+        description = rv.description or (model_rel.description if model_rel else "")
+        edges.append(
+            {
+                "id": f"step-{order}-{src}__{dst}",
+                "source": src,
+                "target": dst,
+                "data": {
+                    "label": f"{order}. {description}" if description else str(order),
+                    "technology": model_rel.technology if model_rel else "",
+                    "order": order,
+                },
+            }
+        )
+
+    _apply_styles(workspace, nodes)
+    return {"nodes": nodes, "edges": edges}
+
+
 def to_g6_data(
     workspace: Workspace, view: View, expand: set[str] | None = None
 ) -> G6Data:
@@ -547,6 +623,8 @@ def to_g6_data(
     """
     if view.type == ViewType.DEPLOYMENT:
         return _deployment_data(workspace, view)
+    if view.type == ViewType.DYNAMIC:
+        return _dynamic_data(workspace, view)
 
     parents = _parent_ids(workspace)
     visible = _visible_ids(workspace, view)

@@ -28,6 +28,7 @@ from pystructurizr.models import (
     RankDirection,
     Relationship,
     RelationshipStyle,
+    RelationshipView,
     Shape,
     SoftwareSystem,
     SoftwareSystemInstance,
@@ -728,6 +729,29 @@ class _Parser:
 
     def _parse_view_item(self, view: View) -> None:
         tok = self._peek()
+        # Dynamic views list ordered interaction steps: `a -> b "description"`.
+        # Steps are stored as RelationshipViews whose id encodes the
+        # endpoints (`src__dst`) and whose order is the 1-based step number.
+        if (
+            view.type == ViewType.DYNAMIC
+            and tok.type == IDENT
+            and self._lookahead_is_arrow()
+        ):
+            raw_src = self._advance().value
+            self._expect(ARROW)
+            raw_dst = self._expect(IDENT).value
+            description = self._optional_string()
+            self._optional_string()  # optional technology, not stored
+            src = self._id_map.get(raw_src, raw_src)
+            dst = self._id_map.get(raw_dst, raw_dst)
+            view.relationship_views.append(
+                RelationshipView(
+                    id=f"{src}__{dst}",
+                    description=description,
+                    order=str(len(view.relationship_views) + 1),
+                )
+            )
+            return
         if tok.type == IDENT:
             kw = tok.value.lower()
             if kw == "include":

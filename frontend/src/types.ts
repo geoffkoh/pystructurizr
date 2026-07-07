@@ -66,6 +66,8 @@ export interface GEdge {
   source: string;
   target: string;
   label: string;
+  /** 1-based step number; only present on dynamic-view edges. */
+  order?: number;
 }
 
 /** Response body from GET /api/views/{key}/graph. */
