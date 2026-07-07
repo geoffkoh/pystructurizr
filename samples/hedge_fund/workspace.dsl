@@ -59,6 +59,22 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
             autoLayout
         }
 
+        dynamic oms PlaceOrder "Dynamic – Order placement and execution" {
+            pm -> omsUi "Raises a parent order"
+            omsUi -> orderApi "Submits the order" "JSON/HTTPS"
+            orderApi -> validator "Validates instrument and quantity"
+            validator -> limitChecker "Requests pre-trade checks"
+            limitChecker -> complianceEngine "Evaluates mandates and restrictions"
+            orderApi -> lifecycle "Accepts and books the order"
+            lifecycle -> parentOrders "Stages the parent order to the EMS"
+            scheduler -> childOrders "Slices the order over the schedule"
+            riskGate -> sor "Releases child orders"
+            sor -> fixGateway "Routes to the best venue"
+            fixGateway -> venues "Executes on venue"
+            fixGateway -> lifecycle "Reports fills back"
+            autoLayout lr
+        }
+
         deployment * "Production" ProductionDeployment "Production – Full Estate" {
             include *
             autoLayout

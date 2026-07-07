@@ -34,6 +34,7 @@ _SUPPORTED_TYPES = frozenset(
         ViewType.SYSTEM_CONTEXT,
         ViewType.CONTAINER,
         ViewType.COMPONENT,
+        ViewType.DYNAMIC,
         ViewType.DEPLOYMENT,
     }
 )
@@ -47,7 +48,8 @@ def is_supported(view: View) -> bool:
 
     Returns:
         ``True`` for ``systemLandscape``, ``systemContext``, ``container``,
-        ``component`` and ``deployment`` views; ``False`` otherwise.
+        ``component``, ``dynamic`` and ``deployment`` views; ``False``
+        otherwise.
     """
     return view.type in _SUPPORTED_TYPES
 
@@ -89,14 +91,16 @@ def view_graph(
 
     edges: list[ReactFlowEdge] = []
     for g6_edge in g6["edges"]:
-        edges.append(
-            {
-                "id": g6_edge["id"],
-                "source": g6_edge["source"],
-                "target": g6_edge["target"],
-                "label": g6_edge.get("data", {}).get("label", ""),
-            }
-        )
+        edge_data = g6_edge.get("data", {})
+        edge: ReactFlowEdge = {
+            "id": g6_edge["id"],
+            "source": g6_edge["source"],
+            "target": g6_edge["target"],
+            "label": edge_data.get("label", ""),
+        }
+        if "order" in edge_data:
+            edge["order"] = edge_data["order"]
+        edges.append(edge)
 
     direction = "TB"
     if view.auto_layout is not None:
