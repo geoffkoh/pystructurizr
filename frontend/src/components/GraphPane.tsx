@@ -37,12 +37,17 @@ const EDGE_STYLES: { value: EdgeStyle; label: string }[] = [
 ];
 
 const EDGE_STYLE_STORAGE_KEY = "pystructurizr.edgeStyle";
+const HOVER_EMPHASIS_STORAGE_KEY = "pystructurizr.hoverEmphasis";
 
 function storedEdgeStyle(): EdgeStyle {
   const raw = window.localStorage.getItem(EDGE_STYLE_STORAGE_KEY);
   return EDGE_STYLES.some((s) => s.value === raw)
     ? (raw as EdgeStyle)
     : "default";
+}
+
+function storedHoverEmphasis(): boolean {
+  return window.localStorage.getItem(HOVER_EMPHASIS_STORAGE_KEY) !== "off";
 }
 
 interface GraphPaneProps {
@@ -166,6 +171,9 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   );
   const [error, setError] = useState<string | null>(null);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(storedEdgeStyle);
+  // Hover emphasis: highlight the hovered relationship, dim the rest.
+  const [hoverEmphasis, setHoverEmphasis] = useState<boolean>(storedHoverEmphasis);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [layoutState, setLayoutState] = useState<"idle" | "saved" | "failed">(
     "idle",
   );
@@ -217,6 +225,18 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   const handleEdgeStyle = useCallback((style: EdgeStyle) => {
     setEdgeStyle(style);
     window.localStorage.setItem(EDGE_STYLE_STORAGE_KEY, style);
+  }, []);
+
+  const handleHoverToggle = useCallback(() => {
+    setHoverEmphasis((enabled) => {
+      const next = !enabled;
+      window.localStorage.setItem(
+        HOVER_EMPHASIS_STORAGE_KEY,
+        next ? "on" : "off",
+      );
+      if (!next) setHoveredEdgeId(null);
+      return next;
+    });
   }, []);
 
   const handleToggleExpand = useCallback(
@@ -358,25 +378,44 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
 
   // Routing is presentation-only, so it is applied on the way into React
   // Flow rather than baked into the edge state.
-  const styledEdges = useMemo(
-    () =>
-      edges.map((edge) => {
-        const order = (edge.data as { order?: number } | undefined)?.order;
-        const animState =
-          isDynamic && animStep !== null && order !== undefined
-            ? order === animStep
-              ? ("active" as const)
-              : order < animStep
-                ? ("past" as const)
-                : ("future" as const)
-            : undefined;
-        return {
-          ...edge,
-          data: { ...edge.data, pathStyle: edgeStyle, animState },
-        };
-      }),
-    [edges, edgeStyle, isDynamic, animStep],
-  );
+  const styledEdges = useMemo(() => {
+    // Ignore hover ids that no longer exist (e.g. after a graph refresh
+    // mid-hover), or every edge would dim with none highlighted.
+    const activeHover =
+      hoverEmphasis &&
+      hoveredEdgeId !== null &&
+      edges.some((edge) => edge.id === hoveredEdgeId)
+        ? hoveredEdgeId
+        : null;
+    return edges.map((edge) => {
+      const order = (edge.data as { order?: number } | undefined)?.order;
+      const animState =
+        isDynamic && animStep !== null && order !== undefined
+          ? order === animStep
+            ? ("active" as const)
+            : order < animStep
+              ? ("past" as const)
+              : ("future" as const)
+          : undefined;
+      const hoverState =
+        activeHover === null
+          ? undefined
+          : edge.id === activeHover
+            ? ("hovered" as const)
+            : ("muted" as const);
+      return {
+        ...edge,
+        ...(hoverState === "hovered" ? { zIndex: 1000 } : {}),
+        data: {
+          ...edge.data,
+          pathStyle: edgeStyle,
+          animState,
+          hoverState,
+          onHoverChange: hoverEmphasis ? setHoveredEdgeId : undefined,
+        },
+      };
+    });
+  }, [edges, edgeStyle, isDynamic, animStep, hoverEmphasis, hoveredEdgeId]);
 
   // A node joins the animation at its earliest step; before that it dims.
   const firstStepByNode = useMemo(() => {
@@ -539,6 +578,8 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStop={saveCurrentLayout}
+        onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+        onEdgeMouseLeave={() => setHoveredEdgeId(null)}
         fitView
         minZoom={0.1}
         proOptions={{ hideAttribution: true }}
@@ -586,6 +627,17 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
             onClick={handleResetLayout}
           >
             Reset layout
+          </button>
+          <span className="edge-style__divider" />
+          <button
+            className={
+              "edge-style__option" +
+              (hoverEmphasis ? " edge-style__option--active" : "")
+            }
+            title="Highlight the hovered relationship and dim the rest"
+            onClick={handleHoverToggle}
+          >
+            Hover
           </button>
           {layoutState !== "idle" ? (
             <span

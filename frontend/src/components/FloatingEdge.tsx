@@ -17,6 +17,10 @@ export interface FloatingEdgeData {
   pathStyle?: "default" | "straight" | "step" | "smoothstep";
   /** Dynamic-view animation state for this edge's step. */
   animState?: "past" | "active" | "future";
+  /** Hover-emphasis state: the hovered edge pops, the rest dim. */
+  hoverState?: "hovered" | "muted";
+  /** Lets the label participate in hover tracking. */
+  onHoverChange?: (edgeId: string | null) => void;
 }
 
 interface Point {
@@ -121,14 +125,18 @@ export function FloatingEdge({
   }
 
   const animState = data?.animState;
-  const edgeStyle = {
-    ...style,
-    ...(animState === "active"
+  const hoverState = data?.hoverState;
+  // The hovered edge wins over everything; otherwise dynamic-view
+  // animation applies, and hover-muting dims whatever is left.
+  const emphasis =
+    hoverState === "hovered" || animState === "active"
       ? { stroke: "#1976d2", strokeWidth: 2.4 }
       : animState === "future"
         ? { opacity: 0.08 }
-        : {}),
-  };
+        : hoverState === "muted"
+          ? { opacity: 0.15 }
+          : {};
+  const edgeStyle = { ...style, ...emphasis };
 
   return (
     <>
@@ -139,11 +147,17 @@ export function FloatingEdge({
             className={
               "edge-label nodrag nopan" +
               (animState === "active" ? " edge-label--active" : "") +
-              (animState === "future" ? " edge-label--future" : "")
+              (animState === "future" ? " edge-label--future" : "") +
+              (hoverState === "hovered" ? " edge-label--hovered" : "") +
+              (hoverState === "muted" ? " edge-label--muted" : "")
             }
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: "all",
+              zIndex: hoverState === "hovered" ? 1000 : undefined,
             }}
+            onMouseEnter={() => data.onHoverChange?.(id)}
+            onMouseLeave={() => data.onHoverChange?.(null)}
           >
             {data.label}
           </div>
