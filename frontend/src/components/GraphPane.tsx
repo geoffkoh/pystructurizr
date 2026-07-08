@@ -112,6 +112,23 @@ function toFlow(
   return { nodes: positioned, edges };
 }
 
+// Expand/collapse and re-layout transitions tween between the old and new
+// layouts instead of jumping.
+const TWEEN_MS = 320;
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+interface Tween {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  fromWidth?: number;
+  fromHeight?: number;
+  toWidth?: number;
+  toHeight?: number;
+}
+
 /**
  * Absolute top-left positions for every node, resolving nested (parent-
  * relative) coordinates by walking the parent chain. This is the format
@@ -220,6 +237,94 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   // (captured in node data) reading fresh state.
   const nodesRef = useRef<Node[]>(nodes);
   nodesRef.current = nodes;
+  const animationRef = useRef(0);
+  // Which view the nodes currently on screen belong to; same-view updates
+  // (expand/collapse, live reload) animate, view switches jump.
+  const shownViewRef = useRef<string | null>(null);
+
+  useEffect(() => () => cancelAnimationFrame(animationRef.current), []);
+
+  /**
+   * Replace the graph with `next`, tweening nodes that survive the change
+   * from their old geometry to the new one. Entering nodes (and nodes
+   * whose parent changed, where relative coordinates are incomparable)
+   * fade in instead. Boundary width/height interpolate alongside, so an
+   * expansion visibly grows out of the collapsed element.
+   */
+  const animateToNodes = useCallback(
+    (next: Node[]) => {
+      cancelAnimationFrame(animationRef.current);
+      const prevById = new Map(nodesRef.current.map((n) => [n.id, n]));
+      const tweens = new Map<string, Tween>();
+
+      const prepared = next.map((n) => {
+        const before = prevById.get(n.id);
+        const sameParent =
+          before !== undefined &&
+          (before.parentNode ?? null) === (n.parentNode ?? null);
+        if (!before || !sameParent) {
+          const entering = ["node-enter", n.className]
+            .filter(Boolean)
+            .join(" ");
+          return { ...n, className: entering };
+        }
+        const toWidth = Number(n.style?.width) || undefined;
+        const toHeight = Number(n.style?.height) || undefined;
+        const fromWidth =
+          before.width ?? (Number(before.style?.width) || undefined);
+        const fromHeight =
+          before.height ?? (Number(before.style?.height) || undefined);
+        tweens.set(n.id, {
+          from: before.position,
+          to: n.position,
+          fromWidth,
+          fromHeight,
+          toWidth,
+          toHeight,
+        });
+        return n;
+      });
+
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / TWEEN_MS);
+        const k = easeInOutCubic(t);
+        setNodes(
+          prepared.map((n) => {
+            const tween = tweens.get(n.id);
+            if (!tween) return n;
+            const frame: Node = {
+              ...n,
+              position: {
+                x: tween.from.x + (tween.to.x - tween.from.x) * k,
+                y: tween.from.y + (tween.to.y - tween.from.y) * k,
+              },
+            };
+            if (
+              tween.toWidth !== undefined &&
+              tween.toHeight !== undefined &&
+              tween.fromWidth !== undefined &&
+              tween.fromHeight !== undefined
+            ) {
+              frame.style = {
+                ...n.style,
+                width:
+                  tween.fromWidth + (tween.toWidth - tween.fromWidth) * k,
+                height:
+                  tween.fromHeight + (tween.toHeight - tween.fromHeight) * k,
+              };
+            }
+            return frame;
+          }),
+        );
+        if (t < 1) {
+          animationRef.current = requestAnimationFrame(step);
+        }
+      };
+      animationRef.current = requestAnimationFrame(step);
+    },
+    [setNodes],
+  );
 
   const saveCurrentLayout = useCallback(() => {
     if (!view) return;
@@ -320,7 +425,14 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
           handleToggleExpand,
           saveCurrentLayout,
         );
-        setNodes(flow.nodes);
+        const sameView =
+          shownViewRef.current === view.key && nodesRef.current.length > 0;
+        shownViewRef.current = view.key;
+        if (sameView) {
+          animateToNodes(flow.nodes);
+        } else {
+          setNodes(flow.nodes);
+        }
         setEdges(flow.edges);
         setStatus("ready");
       })
@@ -343,6 +455,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
     layoutEpoch,
     handleToggleExpand,
     saveCurrentLayout,
+    animateToNodes,
     setNodes,
     setEdges,
   ]);

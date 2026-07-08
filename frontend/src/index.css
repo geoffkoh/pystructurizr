@@ -448,6 +448,17 @@ button {
   opacity: 0.15;
 }
 
+/* ---- Expand/collapse transition ---- */
+.react-flow__node.node-enter {
+  animation: node-enter 320ms ease;
+}
+
+@keyframes node-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 /* ---- Dynamic view animation ---- */
 .react-flow__node.anim-future {
   opacity: 0.18;
