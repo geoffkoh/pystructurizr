@@ -84,6 +84,9 @@ function toFlow(
     return {
       id: n.id,
       type: isBoundary ? "boundary" : "element",
+      // The boundary's interior is pointer-transparent so edges behind it
+      // stay hoverable; its label is the drag handle.
+      ...(isBoundary ? { dragHandle: ".boundary__label" } : {}),
       position: n.position ?? { x: 0, y: 0 },
       ...(n.parentId
         ? { parentNode: n.parentId, extent: "parent" as const }
@@ -100,14 +103,41 @@ function toFlow(
     };
   });
 
-  const edges: Edge[] = data.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: "floating",
-    data: { label: e.label || undefined, order: e.order },
-    markerEnd: { type: MarkerType.ArrowClosed },
-  }));
+  // Edges sharing a node pair (either direction) fan out as curves so
+  // bidirectional flows and parallel relationships stay readable: each
+  // gets a perpendicular offset, sign-normalised to the canonical pair
+  // order so opposite directions bow to opposite sides.
+  const CURVE_GAP = 48;
+  const pairKey = (e: { source: string; target: string }) =>
+    [e.source, e.target].sort().join("|");
+  const pairCounts = new Map<string, number>();
+  for (const e of data.edges) {
+    const key = pairKey(e);
+    pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+  }
+  const pairSeen = new Map<string, number>();
+
+  const edges: Edge[] = data.edges.map((e) => {
+    const key = pairKey(e);
+    const total = pairCounts.get(key) ?? 1;
+    let curveOffset: number | undefined;
+    if (total > 1) {
+      const index = pairSeen.get(key) ?? 0;
+      pairSeen.set(key, index + 1);
+      const canonical = e.source <= e.target ? 1 : -1;
+      // The middle edge of an odd-sized group keeps the straight centre
+      // line (offset 0); the rest fan out around it.
+      curveOffset = (index - (total - 1) / 2) * CURVE_GAP * canonical;
+    }
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: "floating",
+      data: { label: e.label || undefined, order: e.order, curveOffset },
+      markerEnd: { type: MarkerType.ArrowClosed },
+    };
+  });
 
   // If any node lacks a stored position, run a fresh auto-layout; otherwise
   // adapt the stored absolute positions to the nested-node model.
@@ -379,14 +409,7 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
   // Routing is presentation-only, so it is applied on the way into React
   // Flow rather than baked into the edge state.
   const styledEdges = useMemo(() => {
-    // Ignore hover ids that no longer exist (e.g. after a graph refresh
-    // mid-hover), or every edge would dim with none highlighted.
-    const activeHover =
-      hoverEmphasis &&
-      hoveredEdgeId !== null &&
-      edges.some((edge) => edge.id === hoveredEdgeId)
-        ? hoveredEdgeId
-        : null;
+    const activeHover = hoverEmphasis ? hoveredEdgeId : null;
     return edges.map((edge) => {
       const order = (edge.data as { order?: number } | undefined)?.order;
       const animState =
@@ -397,20 +420,15 @@ export function GraphPane({ view, views, workspace, onNavigate }: GraphPaneProps
               ? ("past" as const)
               : ("future" as const)
           : undefined;
-      const hoverState =
-        activeHover === null
-          ? undefined
-          : edge.id === activeHover
-            ? ("hovered" as const)
-            : ("muted" as const);
+      const hovered = edge.id === activeHover;
       return {
         ...edge,
-        ...(hoverState === "hovered" ? { zIndex: 1000 } : {}),
+        ...(hovered ? { zIndex: 1000 } : {}),
         data: {
           ...edge.data,
           pathStyle: edgeStyle,
           animState,
-          hoverState,
+          hoverState: hovered ? ("hovered" as const) : undefined,
           onHoverChange: hoverEmphasis ? setHoveredEdgeId : undefined,
         },
       };

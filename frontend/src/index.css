@@ -366,6 +366,7 @@ button {
 }
 
 .boundary__collapse {
+  pointer-events: all;
   position: absolute;
   top: 6px;
   right: 8px;
@@ -451,11 +452,6 @@ button {
   border-color: var(--accent);
   color: var(--accent);
   background: #ffffff;
-  font-weight: 600;
-}
-
-.edge-label--muted {
-  opacity: 0.15;
 }
 
 /* ---- Expand/collapse transition ---- */
@@ -534,6 +530,13 @@ button {
 }
 
 /* ---- C4 boundary (group node) ---- */
+/* The boundary interior must not swallow pointer events: edges routed
+   behind the box stay hoverable. Only the label (also the drag handle),
+   the collapse button and the resize handles are interactive. */
+.react-flow__node-boundary {
+  pointer-events: none !important;
+}
+
 .boundary {
   width: 100%;
   height: 100%;
@@ -541,6 +544,7 @@ button {
   border-radius: 10px;
   background: rgba(144, 164, 174, 0.07);
   position: relative;
+  pointer-events: none;
 }
 
 .boundary__label {
@@ -551,6 +555,15 @@ button {
   font-weight: 600;
   color: #546e7a;
   white-space: nowrap;
+  pointer-events: all;
+  cursor: move;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 6px;
+}
+
+.boundary__label:hover {
+  background: rgba(144, 164, 174, 0.15);
 }
 
 .boundary__type {
@@ -562,9 +575,11 @@ button {
 
 .boundary__resize-line {
   border-color: var(--accent) !important;
+  pointer-events: all !important;
 }
 
 .boundary__resize-handle {
+  pointer-events: all !important;
   width: 9px !important;
   height: 9px !important;
   border-radius: 2px !important;
