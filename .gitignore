@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Layout sidecars are per-user UI state, not source
+*.layout.json
