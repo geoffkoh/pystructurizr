@@ -86,7 +86,7 @@ function toFlow(
       type: isBoundary ? "boundary" : "element",
       // The boundary's interior is pointer-transparent so edges behind it
       // stay hoverable; its label is the drag handle.
-      ...(isBoundary ? { dragHandle: ".boundary__label" } : {}),
+      ...(isBoundary ? { dragHandle: ".boundary__hit, .boundary__label" } : {}),
       position: n.position ?? { x: 0, y: 0 },
       ...(n.parentId
         ? { parentNode: n.parentId, extent: "parent" as const }

@@ -547,6 +547,16 @@ button {
   pointer-events: none;
 }
 
+.boundary__hit {
+  position: absolute;
+  pointer-events: all;
+  cursor: move;
+}
+
+.boundary__hit:hover {
+  background: rgba(144, 164, 174, 0.12);
+}
+
 .boundary__label {
   position: absolute;
   left: 12px;
