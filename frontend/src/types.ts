@@ -160,6 +160,24 @@ export interface WorkspaceDocumentation {
   decisions: DocDecision[];
 }
 
+/** One DSL file from GET /api/source. */
+export interface SourceFile {
+  path: string;
+  content: string;
+}
+
+/** Where an element is defined, from GET /api/source. */
+export interface SourceLocation {
+  path: string;
+  line: number;
+}
+
+/** Response body from GET /api/source. */
+export interface SourceResult {
+  files: SourceFile[];
+  locations: Record<string, SourceLocation>;
+}
+
 export interface Workspace {
   name: string;
   description: string;
