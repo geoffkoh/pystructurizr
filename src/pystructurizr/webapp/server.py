@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pystructurizr.models import View, Workspace
+from pystructurizr.parser.locations import element_locations
 from pystructurizr.webapp.g6_view import apply_positions, apply_sizes
 from pystructurizr.webapp import graph
 from pystructurizr.webapp.loader import (
@@ -50,6 +51,7 @@ class AppState:
         generation: Bumped on every successful live reload so clients know
             to refetch.
         load_error: Parse error from the last failed live reload, if any.
+        source_cache: Cached /api/source payload; cleared on (re)load.
     """
 
     root: Path
@@ -60,6 +62,7 @@ class AppState:
     watch_token: str = ""
     generation: int = 0
     load_error: str = ""
+    source_cache: dict[str, Any] | None = None
 
 
 class LoadRequest(BaseModel):
@@ -203,6 +206,7 @@ def _begin_watching(state: AppState, path: Path) -> None:
     state.watch_files = watched_files(path)
     state.watch_token = _watch_token(state.watch_files)
     state.load_error = ""
+    state.source_cache = None
 
 
 def _layout_sidecar(source: Path) -> Path:
@@ -332,6 +336,53 @@ def create_app(
             "generation": state.generation,
             "error": state.load_error or None,
         }
+
+    @app.get("/api/source")
+    def get_source(state: AppState = Depends(_get_state)) -> dict[str, Any]:
+        """Return the loaded workspace's DSL source files and element sites.
+
+        ``files`` holds every DSL file (root plus ``!include`` fragments)
+        with root-relative paths; ``locations`` maps element ids to the
+        file and 1-based line where they are defined, for the source
+        viewer's double-click-to-definition.
+        """
+        _require_workspace(state)
+        if state.current_path is None:
+            raise HTTPException(status_code=409, detail="No source file loaded")
+        if state.source_cache is not None:
+            return state.source_cache
+
+        dsl_suffixes = {".dsl", ".structurizr"}
+        files: list[dict[str, str]] = []
+        seen: set[Path] = set()
+        candidates = [state.current_path] + list(state.watch_files)
+        for file in candidates:
+            if file in seen:
+                continue
+            seen.add(file)
+            if file.suffix.lower() not in dsl_suffixes and file != state.current_path:
+                continue
+            try:
+                content = file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            try:
+                rel = file.relative_to(state.root).as_posix()
+            except ValueError:
+                rel = file.name
+            files.append({"path": rel, "content": content})
+
+        locations: dict[str, dict[str, Any]] = {}
+        if state.current_path.suffix.lower() in dsl_suffixes:
+            for eid, (path, line) in element_locations(state.current_path).items():
+                try:
+                    rel = path.relative_to(state.root).as_posix()
+                except ValueError:
+                    rel = path.name
+                locations[eid] = {"path": rel, "line": line}
+
+        state.source_cache = {"files": files, "locations": locations}
+        return state.source_cache
 
     @app.get("/api/workspace")
     def get_workspace(state: AppState = Depends(_get_state)) -> dict[str, Any]:

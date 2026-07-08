@@ -806,3 +806,88 @@ button {
   padding-left: 14px;
   color: var(--muted);
 }
+
+/* ---- Source viewer ---- */
+.src {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 0 48px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: var(--panel);
+}
+
+.src__line {
+  display: flex;
+  white-space: pre;
+}
+
+.src__line--focus {
+  animation: src-focus 2.2s ease-out;
+}
+
+@keyframes src-focus {
+  0%,
+  35% {
+    background: var(--accent-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.src__lineno {
+  width: 52px;
+  min-width: 52px;
+  padding-right: 14px;
+  text-align: right;
+  color: #b3bcc7;
+  user-select: none;
+}
+
+.src__text {
+  flex: 1;
+  padding-right: 24px;
+}
+
+.dsl-comment {
+  color: #8a94a2;
+  font-style: italic;
+}
+
+.dsl-string {
+  color: #2e7d32;
+}
+
+.dsl-color {
+  color: #c2185b;
+}
+
+.dsl-keyword {
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.dsl-property {
+  color: #6d4c9f;
+}
+
+.dsl-def {
+  color: #b26a00;
+  font-weight: 600;
+}
+
+.dsl-arrow {
+  color: #d84315;
+  font-weight: 600;
+}
+
+.dsl-directive {
+  color: #00838f;
+  font-weight: 600;
+}
+
+.dsl-number {
+  color: #c2185b;
+}

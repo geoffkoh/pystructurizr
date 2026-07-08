@@ -8,6 +8,7 @@ import type {
   GraphData,
   LayoutResult,
   LoadResult,
+  SourceResult,
   StatusResult,
   ViewInfo,
   Workspace,
@@ -73,6 +74,11 @@ export function loadFile(path: string): Promise<LoadResult> {
 /** GET /api/status -> live-reload heartbeat for the loaded workspace. */
 export function getStatus(): Promise<StatusResult> {
   return request<StatusResult>("/api/status");
+}
+
+/** GET /api/source -> DSL files and element definition locations. */
+export function getSource(): Promise<SourceResult> {
+  return request<SourceResult>("/api/source");
 }
 
 /** GET /api/workspace -> the full loaded workspace model. */

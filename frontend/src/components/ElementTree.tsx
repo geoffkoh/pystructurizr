@@ -3,7 +3,11 @@ import type { Container, SoftwareSystem, Workspace } from "../types";
 
 interface ElementTreeProps {
   workspace: Workspace | null;
+  /** Double-click on any element opens its definition in the Source tab. */
+  onShowDefinition: (elementId: string) => void;
 }
+
+const DEFINITION_HINT = "Double-click to view the DSL definition";
 
 /** A collapsible section header row with a chevron. */
 function Toggle({
@@ -11,14 +15,22 @@ function Toggle({
   label,
   color,
   onToggle,
+  onDoubleClick,
 }: {
   open: boolean;
   label: string;
   color?: string;
   onToggle: () => void;
+  onDoubleClick?: () => void;
 }) {
   return (
-    <button type="button" className="tree__toggle" onClick={onToggle}>
+    <button
+      type="button"
+      className="tree__toggle"
+      onClick={onToggle}
+      onDoubleClick={onDoubleClick}
+      title={onDoubleClick ? DEFINITION_HINT : undefined}
+    >
       <span className={"tree__chevron" + (open ? " tree__chevron--open" : "")}>
         ▶
       </span>
@@ -30,7 +42,33 @@ function Toggle({
   );
 }
 
-function ContainerNode({ container }: { container: Container }) {
+function Leaf({
+  color,
+  onShowDefinition,
+  children,
+}: {
+  color: string;
+  onShowDefinition: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <li
+      className="tree__leaf"
+      onDoubleClick={onShowDefinition}
+      title={DEFINITION_HINT}
+    >
+      <span className="dot" style={{ background: color }} /> {children}
+    </li>
+  );
+}
+
+function ContainerNode({
+  container,
+  onShowDefinition,
+}: {
+  container: Container;
+  onShowDefinition: (elementId: string) => void;
+}) {
   const [open, setOpen] = useState(true);
   const hasComponents = container.components.length > 0;
   return (
@@ -41,22 +79,29 @@ function ContainerNode({ container }: { container: Container }) {
           color="#43a047"
           label={container.name}
           onToggle={() => setOpen((v) => !v)}
+          onDoubleClick={() => onShowDefinition(container.id)}
         />
       ) : (
-        <div className="tree__leaf">
-          <span className="dot" style={{ background: "#43a047" }} /> {container.name}
-        </div>
+        <Leaf
+          color="#43a047"
+          onShowDefinition={() => onShowDefinition(container.id)}
+        >
+          {container.name}
+        </Leaf>
       )}
       {hasComponents && open ? (
         <ul>
           {container.components.map((component) => (
-            <li key={component.id} className="tree__leaf">
-              <span className="dot" style={{ background: "#fb8c00" }} />{" "}
+            <Leaf
+              key={component.id}
+              color="#fb8c00"
+              onShowDefinition={() => onShowDefinition(component.id)}
+            >
               {component.name}
               {component.technology ? (
                 <span className="tree__tech"> · {component.technology}</span>
               ) : null}
-            </li>
+            </Leaf>
           ))}
         </ul>
       ) : null}
@@ -64,7 +109,13 @@ function ContainerNode({ container }: { container: Container }) {
   );
 }
 
-function SystemNode({ system }: { system: SoftwareSystem }) {
+function SystemNode({
+  system,
+  onShowDefinition,
+}: {
+  system: SoftwareSystem;
+  onShowDefinition: (elementId: string) => void;
+}) {
   const [open, setOpen] = useState(true);
   const hasContainers = system.containers.length > 0;
   return (
@@ -75,16 +126,24 @@ function SystemNode({ system }: { system: SoftwareSystem }) {
           color="#1976d2"
           label={system.name}
           onToggle={() => setOpen((v) => !v)}
+          onDoubleClick={() => onShowDefinition(system.id)}
         />
       ) : (
-        <div className="tree__leaf">
-          <span className="dot" style={{ background: "#1976d2" }} /> {system.name}
-        </div>
+        <Leaf
+          color="#1976d2"
+          onShowDefinition={() => onShowDefinition(system.id)}
+        >
+          {system.name}
+        </Leaf>
       )}
       {hasContainers && open ? (
         <ul>
           {system.containers.map((container) => (
-            <ContainerNode key={container.id} container={container} />
+            <ContainerNode
+              key={container.id}
+              container={container}
+              onShowDefinition={onShowDefinition}
+            />
           ))}
         </ul>
       ) : null}
@@ -95,8 +154,9 @@ function SystemNode({ system }: { system: SoftwareSystem }) {
 /**
  * Renders the workspace model as a collapsible tree:
  * people, then software systems -> containers -> components.
+ * Double-clicking any element opens its DSL definition.
  */
-export function ElementTree({ workspace }: ElementTreeProps) {
+export function ElementTree({ workspace, onShowDefinition }: ElementTreeProps) {
   const [peopleOpen, setPeopleOpen] = useState(true);
   const [systemsOpen, setSystemsOpen] = useState(true);
 
@@ -127,10 +187,13 @@ export function ElementTree({ workspace }: ElementTreeProps) {
                 <li className="tree__leaf muted">None</li>
               ) : (
                 people.map((person) => (
-                  <li key={person.id} className="tree__leaf">
-                    <span className="dot" style={{ background: "#0d47a1" }} />{" "}
+                  <Leaf
+                    key={person.id}
+                    color="#0d47a1"
+                    onShowDefinition={() => onShowDefinition(person.id)}
+                  >
                     {person.name}
-                  </li>
+                  </Leaf>
                 ))
               )}
             </ul>
@@ -148,7 +211,11 @@ export function ElementTree({ workspace }: ElementTreeProps) {
                 <li className="tree__leaf muted">None</li>
               ) : (
                 software_systems.map((system) => (
-                  <SystemNode key={system.id} system={system} />
+                  <SystemNode
+                    key={system.id}
+                    system={system}
+                    onShowDefinition={onShowDefinition}
+                  />
                 ))
               )}
             </ul>

@@ -1,4 +1,4 @@
-export type AppPage = "diagrams" | "documentation" | "decisions";
+export type AppPage = "diagrams" | "documentation" | "decisions" | "source";
 
 interface TopBarProps {
   workspaceName: string | null;
@@ -31,6 +31,7 @@ export function TopBar({
     ...(decisionCount > 0
       ? [{ id: "decisions" as const, label: `Decisions (${decisionCount})` }]
       : []),
+    ...(filePath ? [{ id: "source" as const, label: "Source" }] : []),
   ];
 
   return (

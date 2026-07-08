@@ -272,6 +272,49 @@ def test_delete_layout_returns_to_auto_layout(client: TestClient, root: Path) ->
     assert not (root / "example.layout.json").exists()
 
 
+def test_source_before_load_returns_409(client: TestClient) -> None:
+    assert client.get("/api/source").status_code == 409
+
+
+def test_source_returns_fragments_and_locations(root: Path) -> None:
+    split = Path(__file__).parent.parent / "fixtures" / "split_workspace"
+    shutil.copytree(split, root / "split_workspace")
+    client = TestClient(create_app(root=root))
+    client.post("/api/load", json={"path": "split_workspace/workspace.dsl"})
+
+    body = client.get("/api/source").json()
+    paths = [f["path"] for f in body["files"]]
+    assert paths[0] == "split_workspace/workspace.dsl"
+    assert "split_workspace/model/people.dsl" in paths
+    assert "split_workspace/model/relationships.dsl" in paths
+    assert 'user = person "User"' in body["files"][1]["content"] or any(
+        'user = person "User"' in f["content"] for f in body["files"]
+    )
+    assert body["locations"]["user"] == {
+        "path": "split_workspace/model/people.dsl",
+        "line": 1,
+    }
+    assert body["locations"]["core"]["path"] == "split_workspace/model/systems.dsl"
+
+
+def test_source_refreshes_after_live_reload(client: TestClient, root: Path) -> None:
+    _load(client)
+    first = client.get("/api/source").json()
+    assert "Internet Banking" in first["files"][0]["content"]
+
+    source = root / "example.dsl"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            '"Internet Banking"', '"Renamed Banking"'
+        ),
+        encoding="utf-8",
+    )
+    _touch_future(source)
+    assert client.get("/api/status").json()["generation"] == 1
+    refreshed = client.get("/api/source").json()
+    assert "Renamed Banking" in refreshed["files"][0]["content"]
+
+
 def test_no_static_dir_serves_not_built_hint(root: Path, tmp_path: Path) -> None:
     missing = tmp_path / "does-not-exist"
     client = TestClient(create_app(root=root, static_dir=missing))

@@ -13,6 +13,7 @@ import { DocsPane } from "./components/DocsPane";
 import { ElementTree } from "./components/ElementTree";
 import { FilePicker } from "./components/FilePicker";
 import { GraphPane } from "./components/GraphPane";
+import { SourcePane, type CodeFocus } from "./components/SourcePane";
 import { TopBar, type AppPage } from "./components/TopBar";
 import { ViewList } from "./components/ViewList";
 
@@ -33,6 +34,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [page, setPage] = useState<AppPage>("diagrams");
+  const [codeFocus, setCodeFocus] = useState<CodeFocus | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const generationRef = useRef(0);
 
   // Load the file list once on mount.
@@ -68,6 +71,7 @@ export default function App() {
     const [ws, vs] = await Promise.all([getWorkspace(), listViews()]);
     setWorkspace(ws);
     setViews(vs);
+    setReloadTick((tick) => tick + 1);
     // Keep the current view selected by key; a fresh object identity makes
     // the graph pane refetch. Deselect if the view no longer exists.
     setSelectedView((previous) =>
@@ -95,6 +99,12 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [currentPath, refresh]);
 
+  /** Double-click in the Elements tree: open the definition in Source. */
+  const handleShowDefinition = useCallback((elementId: string) => {
+    setCodeFocus({ elementId, nonce: Date.now() });
+    setPage("source");
+  }, []);
+
   const handleSelectFile = useCallback(async (path: string) => {
     setLoadingPath(path);
     setError(null);
@@ -105,6 +115,8 @@ export default function App() {
       setViews(result.views);
       setSelectedView(null);
       setPage("diagrams");
+      setCodeFocus(null);
+      setReloadTick((tick) => tick + 1);
       const [ws, status] = await Promise.all([getWorkspace(), getStatus()]);
       setWorkspace(ws);
       generationRef.current = status.generation;
@@ -144,7 +156,10 @@ export default function App() {
             selectedKey={selectedView?.key ?? null}
             onSelect={setSelectedView}
           />
-          <ElementTree workspace={workspace} />
+          <ElementTree
+            workspace={workspace}
+            onShowDefinition={handleShowDefinition}
+          />
         </aside>
         <main className="main">
           {page === "diagrams" ? (
@@ -154,6 +169,8 @@ export default function App() {
               workspace={workspace}
               onNavigate={setSelectedView}
             />
+          ) : page === "source" ? (
+            <SourcePane reloadTick={reloadTick} focus={codeFocus} />
           ) : (
             <DocsPane workspace={workspace} mode={page} />
           )}
