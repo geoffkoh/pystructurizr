@@ -394,7 +394,6 @@ button {
   padding: 1px 5px;
   font-size: 10px;
   color: var(--muted);
-  pointer-events: none;
   max-width: 160px;
   text-align: center;
 }
@@ -445,6 +444,17 @@ button {
 }
 
 .edge-label--future {
+  opacity: 0.15;
+}
+
+.edge-label--hovered {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #ffffff;
+  font-weight: 600;
+}
+
+.edge-label--muted {
   opacity: 0.15;
 }
 
