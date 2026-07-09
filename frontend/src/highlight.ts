@@ -59,8 +59,12 @@ const PROPERTIES = new Set([
   "dashed",
 ]);
 
+// Whitespace must be its own token and the punctuation catch-all a SINGLE
+// character: a greedy multi-char catch-all would swallow the whitespace
+// together with the `"`, `//`, `->`, `#` or `!` that starts the next
+// token, leaving strings/comments/arrows/colours/directives unhighlighted.
 const TOKEN_RE =
-  /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|#[0-9A-Fa-f]{3,8}|->|![A-Za-z]+|[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\n|[^\nA-Za-z0-9_]+/g;
+  /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|#[0-9A-Fa-f]{3,8}|->|![A-Za-z]+|[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\n|[ \t]+|[^\nA-Za-z0-9_]/g;
 
 function classify(text: string, nextSolid: string | undefined): string | null {
   if (text.startsWith("//") || text.startsWith("/*")) return "comment";
@@ -98,12 +102,25 @@ export function highlightDsl(source: string): HighlightSpan[][] {
   }
 
   const lines: HighlightSpan[][] = [[]];
+  // After a !directive, the rest of the line is a path/argument: suppress
+  // keyword/definition colouring there (`!include model/oms.dsl` must not
+  // paint "model" as a keyword).
+  let inDirectiveLine = false;
   raw.forEach((token, index) => {
     if (token === "\n") {
       lines.push([]);
+      inDirectiveLine = false;
       return;
     }
-    const cls = classify(token, solids[index]);
+    let cls = classify(token, solids[index]);
+    if (cls === "directive") {
+      inDirectiveLine = true;
+    } else if (
+      inDirectiveLine &&
+      (cls === "keyword" || cls === "property" || cls === "def")
+    ) {
+      cls = null;
+    }
     const parts = token.split("\n");
     parts.forEach((part, partIndex) => {
       if (partIndex > 0) lines.push([]);
