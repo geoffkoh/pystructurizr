@@ -1,4 +1,4 @@
-"""Tests for the g6_view graph-data helper reused by the web app."""
+"""Tests for the view_graph builder reused by the web app."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pystructurizr.models import (
     Workspace,
 )
 from pystructurizr.parser.dsl import parse_dsl_file
-from pystructurizr.webapp.g6_view import apply_positions, to_g6_data
+from pystructurizr.webapp.view_graph import apply_positions, build_view_graph
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "example.dsl"
 
@@ -47,7 +47,7 @@ def workspace() -> Workspace:
 
 class TestSystemContextView:
     def test_shows_only_people_and_systems(self, workspace: Workspace) -> None:
-        data = to_g6_data(workspace, _view(workspace, ViewType.SYSTEM_CONTEXT))
+        data = build_view_graph(workspace, _view(workspace, ViewType.SYSTEM_CONTEXT))
         kinds = {n["data"]["kind"] for n in data["nodes"]}
         assert "container" not in kinds
         assert "component" not in kinds
@@ -62,7 +62,7 @@ class TestSystemContextView:
     def test_lifts_container_relationships_to_the_system(
         self, workspace: Workspace
     ) -> None:
-        data = to_g6_data(workspace, _view(workspace, ViewType.SYSTEM_CONTEXT))
+        data = build_view_graph(workspace, _view(workspace, ViewType.SYSTEM_CONTEXT))
         customer = _node_by_label(data, "Personal Banking Customer")["id"]
         bank = _node_by_label(data, "Internet Banking System")["id"]
         email = _node_by_label(data, "E-mail System")["id"]
@@ -75,14 +75,14 @@ class TestSystemContextView:
         assert (bank, bank) not in pairs
 
     def test_has_no_boundary_node(self, workspace: Workspace) -> None:
-        data = to_g6_data(workspace, _view(workspace, ViewType.SYSTEM_CONTEXT))
+        data = build_view_graph(workspace, _view(workspace, ViewType.SYSTEM_CONTEXT))
         assert all(n["data"]["kind"] != "boundary" for n in data["nodes"])
 
 
 class TestContainerView:
     def test_scoped_system_becomes_the_boundary(self, workspace: Workspace) -> None:
         view = _view(workspace, ViewType.CONTAINER)
-        data = to_g6_data(workspace, view)
+        data = build_view_graph(workspace, view)
         boundary = data["nodes"][0]
         assert boundary["data"]["kind"] == "boundary"
         assert boundary["id"] == view.element_id
@@ -92,7 +92,7 @@ class TestContainerView:
 
     def test_containers_are_nested_in_the_boundary(self, workspace: Workspace) -> None:
         view = _view(workspace, ViewType.CONTAINER)
-        data = to_g6_data(workspace, view)
+        data = build_view_graph(workspace, view)
         containers = [n for n in data["nodes"] if n["data"]["kind"] == "container"]
         assert len(containers) == 4
         assert all(n["parentId"] == view.element_id for n in containers)
@@ -100,7 +100,7 @@ class TestContainerView:
     def test_external_elements_stay_outside_the_boundary(
         self, workspace: Workspace
     ) -> None:
-        data = to_g6_data(workspace, _view(workspace, ViewType.CONTAINER))
+        data = build_view_graph(workspace, _view(workspace, ViewType.CONTAINER))
         outside = [
             n
             for n in data["nodes"]
@@ -112,14 +112,14 @@ class TestContainerView:
     def test_edges_connect_leaves_across_the_boundary(
         self, workspace: Workspace
     ) -> None:
-        data = to_g6_data(workspace, _view(workspace, ViewType.CONTAINER))
+        data = build_view_graph(workspace, _view(workspace, ViewType.CONTAINER))
         api = _node_by_label(data, "API Application")["id"]
         email = _node_by_label(data, "E-mail System")["id"]
         pairs = _edge_pairs(data)
         assert (api, email) in pairs
 
     def test_nodes_carry_technology_and_description(self, workspace: Workspace) -> None:
-        data = to_g6_data(workspace, _view(workspace, ViewType.CONTAINER))
+        data = build_view_graph(workspace, _view(workspace, ViewType.CONTAINER))
         webapp = _node_by_label(data, "Web Application")
         assert webapp["data"]["technology"] == "Java, Spring MVC"
         assert webapp["data"]["description"] == "Serves static content"
@@ -167,7 +167,7 @@ class TestComponentView:
         self, component_workspace: Workspace
     ) -> None:
         view = component_workspace.views[0]
-        data = to_g6_data(component_workspace, view)
+        data = build_view_graph(component_workspace, view)
         boundary = data["nodes"][0]
         assert boundary["data"]["kind"] == "boundary"
         assert boundary["id"] == "api"
@@ -175,7 +175,7 @@ class TestComponentView:
     def test_components_nest_and_related_peers_show(
         self, component_workspace: Workspace
     ) -> None:
-        data = to_g6_data(component_workspace, component_workspace.views[0])
+        data = build_view_graph(component_workspace, component_workspace.views[0])
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["ctrl"]["parentId"] == "api"
         assert by_id["svc"]["parentId"] == "api"
@@ -190,7 +190,7 @@ class TestComponentView:
     def test_peer_appears_at_declared_level_only(
         self, component_workspace: Workspace
     ) -> None:
-        data = to_g6_data(component_workspace, component_workspace.views[0])
+        data = build_view_graph(component_workspace, component_workspace.views[0])
         by_id = {n["id"]: n for n in data["nodes"]}
         # svc -> logStore is declared against the container, so the container
         # shows and its parent system must NOT also appear as a floater.
@@ -198,7 +198,7 @@ class TestComponentView:
         assert "obs" not in by_id
 
     def test_cross_boundary_edges_survive(self, component_workspace: Workspace) -> None:
-        data = to_g6_data(component_workspace, component_workspace.views[0])
+        data = build_view_graph(component_workspace, component_workspace.views[0])
         pairs = _edge_pairs(data)
         assert pairs == {
             ("user", "ctrl"),
@@ -266,7 +266,7 @@ class TestDeploymentView:
         self, deploy_workspace: Workspace
     ) -> None:
         view = next(v for v in deploy_workspace.views if v.key == "Prod")
-        data = to_g6_data(deploy_workspace, view)
+        data = build_view_graph(deploy_workspace, view)
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["cluster"]["parentId"] == "cloud"
         assert by_id["webInst"]["parentId"] == "cluster"
@@ -281,7 +281,7 @@ class TestDeploymentView:
         self, deploy_workspace: Workspace
     ) -> None:
         view = next(v for v in deploy_workspace.views if v.key == "Prod")
-        data = to_g6_data(deploy_workspace, view)
+        data = build_view_graph(deploy_workspace, view)
         pairs = _edge_pairs(data)
         # web -> orders (component of api) derives webInst -> apiInst.
         assert ("webInst", "apiInst") in pairs
@@ -294,7 +294,7 @@ class TestDeploymentView:
         self, deploy_workspace: Workspace
     ) -> None:
         view = next(v for v in deploy_workspace.views if v.key == "ShopProd")
-        data = to_g6_data(deploy_workspace, view)
+        data = build_view_graph(deploy_workspace, view)
         ids = {n["id"] for n in data["nodes"]}
         assert "webInst" in ids and "apiInst" in ids
         # The GCP branch only hosts Analytics, so it is pruned entirely.
@@ -313,7 +313,7 @@ class TestContainerExpansion:
         self, deploy_workspace: Workspace
     ) -> None:
         view = next(v for v in deploy_workspace.views if v.key == "Containers")
-        data = to_g6_data(deploy_workspace, view)
+        data = build_view_graph(deploy_workspace, view)
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["api"]["data"].get("expandable") is True
         assert "expandable" not in by_id["web"]["data"]
@@ -322,7 +322,7 @@ class TestContainerExpansion:
         self, deploy_workspace: Workspace
     ) -> None:
         view = next(v for v in deploy_workspace.views if v.key == "Containers")
-        data = to_g6_data(deploy_workspace, view, expand={"api"})
+        data = build_view_graph(deploy_workspace, view, expand={"api"})
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["api"]["data"]["kind"] == "boundary"
         assert by_id["api"]["data"]["expanded"] is True
@@ -338,8 +338,8 @@ class TestContainerExpansion:
         self, deploy_workspace: Workspace
     ) -> None:
         view = next(v for v in deploy_workspace.views if v.key == "Containers")
-        plain = to_g6_data(deploy_workspace, view)
-        expanded = to_g6_data(deploy_workspace, view, expand={"web", "nope"})
+        plain = build_view_graph(deploy_workspace, view)
+        expanded = build_view_graph(deploy_workspace, view, expand={"web", "nope"})
         assert [n["id"] for n in plain["nodes"]] == [n["id"] for n in expanded["nodes"]]
 
 
@@ -380,7 +380,7 @@ class TestTagBasedStyles:
 
     def test_styles_overlay_matching_nodes(self, styled_workspace: Workspace) -> None:
         view = styled_workspace.views[0]
-        data = to_g6_data(styled_workspace, view)
+        data = build_view_graph(styled_workspace, view)
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["u"]["data"]["background"] == "#08427b"
         assert by_id["u"]["data"]["textColor"] == "#ffffff"
@@ -393,9 +393,9 @@ class TestTagBasedStyles:
     def test_view_graph_prefers_style_background_over_palette(
         self, styled_workspace: Workspace
     ) -> None:
-        from pystructurizr.webapp.graph import view_graph
+        from pystructurizr.webapp.graph import react_flow_graph
 
-        data = view_graph(styled_workspace, styled_workspace.views[0])
+        data = react_flow_graph(styled_workspace, styled_workspace.views[0])
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["db"]["data"]["color"] == "#2e7d32"
         assert by_id["web"]["data"]["color"] == "#43a047"  # palette fallback
@@ -441,7 +441,7 @@ class TestSystemLandscapeView:
     def test_shows_all_people_and_systems_only(
         self, landscape_workspace: Workspace
     ) -> None:
-        data = to_g6_data(landscape_workspace, landscape_workspace.views[0])
+        data = build_view_graph(landscape_workspace, landscape_workspace.views[0])
         kinds = {n["id"]: n["data"]["kind"] for n in data["nodes"]}
         assert "api" not in kinds  # containers never appear
         assert kinds["staff"] == "person"
@@ -450,7 +450,7 @@ class TestSystemLandscapeView:
     def test_enterprise_boundary_nests_internal_elements(
         self, landscape_workspace: Workspace
     ) -> None:
-        data = to_g6_data(landscape_workspace, landscape_workspace.views[0])
+        data = build_view_graph(landscape_workspace, landscape_workspace.views[0])
         by_id = {n["id"]: n for n in data["nodes"]}
         boundary = by_id["__enterprise__"]
         assert boundary["data"]["kind"] == "boundary"
@@ -462,7 +462,7 @@ class TestSystemLandscapeView:
         assert "parentId" not in by_id["vendor"]
 
     def test_edges_lift_to_systems(self, landscape_workspace: Workspace) -> None:
-        data = to_g6_data(landscape_workspace, landscape_workspace.views[0])
+        data = build_view_graph(landscape_workspace, landscape_workspace.views[0])
         pairs = _edge_pairs(data)
         assert pairs == {
             ("staff", "core"),
@@ -512,7 +512,7 @@ class TestDynamicView:
         self, dynamic_workspace: Workspace
     ) -> None:
         view = dynamic_workspace.views[0]
-        data = to_g6_data(dynamic_workspace, view)
+        data = build_view_graph(dynamic_workspace, view)
         labels = [e["data"]["label"] for e in data["edges"]]
         assert labels[0] == "1. Adds items to the basket"
         assert labels[1] == "2. Places the order"
@@ -524,7 +524,7 @@ class TestDynamicView:
         self, dynamic_workspace: Workspace
     ) -> None:
         view = dynamic_workspace.views[0]
-        data = to_g6_data(dynamic_workspace, view)
+        data = build_view_graph(dynamic_workspace, view)
         by_id = {n["id"]: n for n in data["nodes"]}
         assert set(by_id) == {"u", "web", "api", "db"}
         assert all("parentId" not in n for n in data["nodes"])
@@ -576,7 +576,7 @@ class TestGeneralizedExpansion:
     def test_system_leaves_are_flagged_expandable(
         self, exp_workspace: Workspace
     ) -> None:
-        data = to_g6_data(exp_workspace, self._view(exp_workspace, "Ctx"))
+        data = build_view_graph(exp_workspace, self._view(exp_workspace, "Ctx"))
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["s"]["data"].get("expandable") is True
         # External systems with modelled containers are expandable too.
@@ -587,7 +587,7 @@ class TestGeneralizedExpansion:
         self, exp_workspace: Workspace
     ) -> None:
         view = self._view(exp_workspace, "Ctx")
-        data = to_g6_data(exp_workspace, view, expand={"s"})
+        data = build_view_graph(exp_workspace, view, expand={"s"})
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["s"]["data"]["kind"] == "boundary"
         assert by_id["s"]["data"]["boundaryLabel"] == "Software System"
@@ -606,7 +606,7 @@ class TestGeneralizedExpansion:
         self, exp_workspace: Workspace
     ) -> None:
         view = self._view(exp_workspace, "Ctx")
-        data = to_g6_data(exp_workspace, view, expand={"s", "api"})
+        data = build_view_graph(exp_workspace, view, expand={"s", "api"})
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["api"]["data"]["kind"] == "boundary"
         assert by_id["api"]["parentId"] == "s"
@@ -622,7 +622,7 @@ class TestGeneralizedExpansion:
         view = self._view(exp_workspace, "Ctx")
         # api is not visible in a context view unless s is expanded, so
         # expanding only api is a no-op.
-        data = to_g6_data(exp_workspace, view, expand={"api"})
+        data = build_view_graph(exp_workspace, view, expand={"api"})
         ids = {n["id"] for n in data["nodes"]}
         assert "api" not in ids
         assert "orders" not in ids
@@ -631,7 +631,7 @@ class TestGeneralizedExpansion:
         self, exp_workspace: Workspace
     ) -> None:
         view = self._view(exp_workspace, "Land")
-        data = to_g6_data(exp_workspace, view, expand={"s"})
+        data = build_view_graph(exp_workspace, view, expand={"s"})
         by_id = {n["id"]: n for n in data["nodes"]}
         assert by_id["s"]["data"]["expanded"] is True
         assert by_id["s"]["parentId"] == "__enterprise__"
@@ -642,13 +642,13 @@ class TestGeneralizedExpansion:
 
 class TestRankDirection:
     def test_defaults_to_top_bottom(self, workspace: Workspace) -> None:
-        from pystructurizr.webapp.graph import view_graph
+        from pystructurizr.webapp.graph import react_flow_graph
 
-        data = view_graph(workspace, workspace.views[0])
+        data = react_flow_graph(workspace, workspace.views[0])
         assert data["rankDirection"] == "TB"
 
     def test_honours_autolayout_direction(self, tmp_path: Path) -> None:
-        from pystructurizr.webapp.graph import view_graph
+        from pystructurizr.webapp.graph import react_flow_graph
 
         dsl = """
         workspace {
@@ -668,7 +668,7 @@ class TestRankDirection:
         path = tmp_path / "lr.dsl"
         path.write_text(dsl, encoding="utf-8")
         ws = parse_dsl_file(path)
-        data = view_graph(ws, ws.views[0])
+        data = react_flow_graph(ws, ws.views[0])
         assert data["rankDirection"] == "LR"
 
 
@@ -676,13 +676,13 @@ def test_apply_positions_round_trip(workspace: Workspace) -> None:
     view = workspace.views[0]
     # Pick two visible node ids from the generated graph so the test does
     # not depend on the specific identifiers in the fixture.
-    ids = [n["id"] for n in to_g6_data(workspace, view)["nodes"]][:2]
+    ids = [n["id"] for n in build_view_graph(workspace, view)["nodes"]][:2]
     assert len(ids) == 2
 
     apply_positions(view, {ids[0]: (100, 200), ids[1]: (300, 400)})
     assert len(view.element_views) == 2
 
-    data = to_g6_data(workspace, view)
+    data = build_view_graph(workspace, view)
     positioned = {
         node["id"]: node["style"]
         for node in data["nodes"]
