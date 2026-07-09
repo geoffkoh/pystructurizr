@@ -2,7 +2,7 @@
 
 The heavy lifting (deciding which elements are visible and collecting the
 relationships between them) lives in
-:mod:`pystructurizr.webapp.g6_view`. This module re-shapes that graph output
+:mod:`pystructurizr.webapp.view_graph`. This module re-shapes that graph output
 into the node/edge structure the React Flow frontend expects.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from pystructurizr.models import RankDirection, View, ViewType, Workspace
-from pystructurizr.webapp.g6_view import KIND_COLOURS, to_g6_data
+from pystructurizr.webapp.view_graph import KIND_COLOURS, build_view_graph
 
 
 # View rank direction → dagre rankdir.
@@ -54,7 +54,7 @@ def is_supported(view: View) -> bool:
     return view.type in _SUPPORTED_TYPES
 
 
-def view_graph(
+def react_flow_graph(
     workspace: Workspace, view: View, expand: set[str] | None = None
 ) -> ReactFlowData:
     """Build React Flow ``{nodes, edges}`` data for ``view``.
@@ -74,17 +74,17 @@ def view_graph(
     Returns:
         A dict with ``nodes`` and ``edges`` lists in React Flow shape.
     """
-    g6 = to_g6_data(workspace, view, expand)
+    graph_data = build_view_graph(workspace, view, expand)
 
     nodes: list[ReactFlowNode] = []
-    for g6_node in g6["nodes"]:
-        data = dict(g6_node.get("data", {}))
+    for graph_node in graph_data["nodes"]:
+        data = dict(graph_node.get("data", {}))
         # Tag-based style backgrounds win over the built-in kind palette.
         data["color"] = data.get("background") or KIND_COLOURS.get(data.get("kind", ""))
-        node: ReactFlowNode = {"id": g6_node["id"], "data": data}
-        if "parentId" in g6_node:
-            node["parentId"] = g6_node["parentId"]
-        style = g6_node.get("style")
+        node: ReactFlowNode = {"id": graph_node["id"], "data": data}
+        if "parentId" in graph_node:
+            node["parentId"] = graph_node["parentId"]
+        style = graph_node.get("style")
         if style is not None and "x" in style and "y" in style:
             node["position"] = {"x": style["x"], "y": style["y"]}
         if style is not None and "width" in style and "height" in style:
@@ -92,12 +92,12 @@ def view_graph(
         nodes.append(node)
 
     edges: list[ReactFlowEdge] = []
-    for g6_edge in g6["edges"]:
-        edge_data = g6_edge.get("data", {})
+    for graph_edge in graph_data["edges"]:
+        edge_data = graph_edge.get("data", {})
         edge: ReactFlowEdge = {
-            "id": g6_edge["id"],
-            "source": g6_edge["source"],
-            "target": g6_edge["target"],
+            "id": graph_edge["id"],
+            "source": graph_edge["source"],
+            "target": graph_edge["target"],
             "label": edge_data.get("label", ""),
         }
         if "order" in edge_data:

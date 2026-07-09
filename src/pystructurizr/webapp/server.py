@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from pystructurizr.models import View, Workspace
 from pystructurizr.parser.locations import element_locations
-from pystructurizr.webapp.g6_view import apply_positions, apply_sizes
+from pystructurizr.webapp.view_graph import apply_positions, apply_sizes
 from pystructurizr.webapp import graph
 from pystructurizr.webapp.loader import (
     WorkspaceLoadError,
@@ -411,7 +411,7 @@ def create_app(
         if cache_key in state.diagrams:
             return state.diagrams[cache_key]
         view = _find_view(workspace, key)
-        data = graph.view_graph(workspace, view, expand_ids or None)
+        data = graph.react_flow_graph(workspace, view, expand_ids or None)
         state.diagrams[cache_key] = data
         return data
 

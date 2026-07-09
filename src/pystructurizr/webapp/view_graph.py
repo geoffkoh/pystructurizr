@@ -33,9 +33,9 @@ from pystructurizr.models import (
 )
 
 
-G6Node = dict[str, Any]
-G6Edge = dict[str, Any]
-G6Data = dict[str, list[Any]]
+GraphNode = dict[str, Any]
+GraphEdge = dict[str, Any]
+GraphData = dict[str, list[Any]]
 
 _Element = Person | SoftwareSystem | Container | Component
 
@@ -239,14 +239,14 @@ def _node(
     x: int | None = None,
     y: int | None = None,
     parent_id: str | None = None,
-) -> G6Node:
+) -> GraphNode:
     """Build a graph node descriptor.
 
     Positions are stored under ``style.x``/``style.y``; when absent the
     frontend layout engine places the node. ``parentId`` marks the node as a
     child of a boundary group node.
     """
-    node: G6Node = {
+    node: GraphNode = {
         "id": eid,
         "data": {
             "label": element.name,
@@ -281,14 +281,14 @@ def _boundary_scope(
 
 def _edges(
     workspace: Workspace, visible: set[str], parents: dict[str, str]
-) -> list[G6Edge]:
+) -> list[GraphEdge]:
     """Build edges between visible nodes, lifting endpoints to ancestors.
 
     Lifted duplicates collapse into a single implied edge per (source,
     target) pair; distinct direct relationships between the same pair are
     kept (e.g. separate "Reads" and "Writes" relationships).
     """
-    edges: list[G6Edge] = []
+    edges: list[GraphEdge] = []
     seen_pairs: set[tuple[str, str]] = set()
     seen_direct: set[tuple[str, str, str]] = set()
     for rel in workspace.relationships:
@@ -340,7 +340,7 @@ _IMPLICIT_TAGS: dict[str, str] = {
 }
 
 
-def _apply_styles(workspace: Workspace, nodes: list[G6Node]) -> None:
+def _apply_styles(workspace: Workspace, nodes: list[GraphNode]) -> None:
     """Overlay tag-based element styles onto node data, in place.
 
     Mirrors Structurizr style resolution: every element implicitly carries
@@ -369,7 +369,7 @@ def _apply_styles(workspace: Workspace, nodes: list[G6Node]) -> None:
                 data["shape"] = style.shape.value
 
 
-def _deployment_data(workspace: Workspace, view: View) -> G6Data:
+def _deployment_data(workspace: Workspace, view: View) -> GraphData:
     """Build graph data for a deployment view.
 
     Deployment nodes render as (arbitrarily) nested boundary group nodes;
@@ -409,12 +409,12 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
             return True
         return any(subtree_relevant(child) for child in dn.children)
 
-    nodes: list[G6Node] = []
+    nodes: list[GraphNode] = []
     instance_refs: dict[str, str] = {}  # leaf id -> underlying model element id
     leaf_ids: set[str] = set()
     positions = _stored_positions(view)
 
-    def place(node: G6Node) -> G6Node:
+    def place(node: GraphNode) -> GraphNode:
         xy = positions.get(node["id"])
         if xy is not None:
             node["style"] = {"x": xy[0], "y": xy[1]}
@@ -451,7 +451,7 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
             return
         if not subtree_relevant(dn):
             return
-        boundary: G6Node = {
+        boundary: GraphNode = {
             "id": dn.id,
             "data": {
                 "label": dn.name,
@@ -513,7 +513,7 @@ def _deployment_data(workspace: Workspace, view: View) -> G6Data:
         ref_instances.setdefault(ref_id, []).append(inst_id)
     ref_ids = set(ref_instances)
 
-    edges: list[G6Edge] = []
+    edges: list[GraphEdge] = []
     seen: set[tuple[str, str]] = set()
 
     def add_edge(src: str, dst: str, rel: Relationship) -> None:
@@ -558,7 +558,7 @@ def _element_kind(element: object) -> str:
     return "component"
 
 
-def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
+def _dynamic_data(workspace: Workspace, view: View) -> GraphData:
     """Build graph data for a dynamic view.
 
     Steps come from the view's ordered RelationshipViews; each becomes an
@@ -573,9 +573,9 @@ def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
     for rel in workspace.relationships:
         rel_by_pair.setdefault((rel.source_id, rel.destination_id), rel)
 
-    nodes: list[G6Node] = []
+    nodes: list[GraphNode] = []
     seen_nodes: set[str] = set()
-    edges: list[G6Edge] = []
+    edges: list[GraphEdge] = []
 
     positions = _stored_positions(view)
 
@@ -627,9 +627,9 @@ def _dynamic_data(workspace: Workspace, view: View) -> G6Data:
     return {"nodes": nodes, "edges": edges}
 
 
-def to_g6_data(
+def build_view_graph(
     workspace: Workspace, view: View, expand: set[str] | None = None
-) -> G6Data:
+) -> GraphData:
     """Return graph data ``{nodes, edges}`` for the given view.
 
     Boundary group nodes always precede their children in the node list so
@@ -689,14 +689,14 @@ def to_g6_data(
         for eid in expanded:
             visible.update(child for child in children_of(eid) if child not in expanded)
 
-    nodes: list[G6Node] = []
+    nodes: list[GraphNode] = []
 
     # Landscape views group internal elements inside the enterprise
     # boundary when one is defined.
     enterprise_id: str | None = None
     if view.type == ViewType.SYSTEM_LANDSCAPE and workspace.enterprise is not None:
         enterprise_id = "__enterprise__"
-        enterprise_node: G6Node = {
+        enterprise_node: GraphNode = {
             "id": enterprise_id,
             "data": {
                 "label": workspace.enterprise.name,
@@ -802,7 +802,7 @@ def apply_sizes(view: View, sizes: dict[str, tuple[int, int]]) -> None:
             ve.height = height
 
 
-def _attach_stored_sizes(view: View, nodes: list[G6Node]) -> None:
+def _attach_stored_sizes(view: View, nodes: list[GraphNode]) -> None:
     """Overlay persisted width/height onto boundary nodes, in place."""
     sizes = {
         ve.id: (ve.width, ve.height)
