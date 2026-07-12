@@ -16,6 +16,7 @@ from pystructurizr.models import (
     AutomaticLayout,
     Border,
     Branding,
+    ColorScheme,
     Component,
     Configuration,
     Container,
@@ -30,8 +31,10 @@ from pystructurizr.models import (
     FilterMode,
     Format,
     HttpHealthCheck,
+    IconPosition,
     Image,
     InfrastructureNode,
+    LineStyle,
     Location,
     Model,
     Person,
@@ -41,16 +44,29 @@ from pystructurizr.models import (
     Relationship,
     RelationshipStyle,
     RelationshipView,
+    Routing,
     Shape,
     SoftwareSystem,
     SoftwareSystemInstance,
     Styles,
     Terminology,
+    User,
     View,
     ViewSet,
     ViewType,
     Workspace,
+    WorkspaceConfiguration,
 )
+
+
+def _enum_or_none(enum_cls: Any, value: Any) -> Any:
+    """Return the enum member for ``value`` or None when absent/unknown."""
+    if not value:
+        return None
+    try:
+        return enum_cls(value)
+    except ValueError:
+        return None
 
 
 def _tags(raw: str | None) -> list[str]:
@@ -415,6 +431,8 @@ def _parse_element_style(data: dict[str, Any]) -> ElementStyle:
         opacity=data.get("opacity"),
         metadata=data.get("metadata"),
         description=data.get("description"),
+        color_scheme=_enum_or_none(ColorScheme, data.get("colorScheme")),
+        icon_position=_enum_or_none(IconPosition, data.get("iconPosition")),
     )
 
 
@@ -426,10 +444,14 @@ def _parse_relationship_style(data: dict[str, Any]) -> RelationshipStyle:
         font_size=data.get("fontSize"),
         width=data.get("width"),
         dashed=data.get("dashed"),
+        style=_enum_or_none(LineStyle, data.get("style")),
+        routing=_enum_or_none(Routing, data.get("routing")),
+        jump=data.get("jump"),
         position=data.get("position"),
         opacity=data.get("opacity"),
         metadata=data.get("metadata"),
         description=data.get("description"),
+        color_scheme=_enum_or_none(ColorScheme, data.get("colorScheme")),
     )
 
 
@@ -547,6 +569,21 @@ def parse_json_file(path: str | Path) -> Workspace:
     return parse_json(Path(path).read_text(encoding="utf-8"))
 
 
+def _parse_workspace_configuration(
+    data: dict[str, Any] | None,
+) -> WorkspaceConfiguration:
+    if not data:
+        return WorkspaceConfiguration()
+    return WorkspaceConfiguration(
+        scope=data.get("scope", ""),
+        visibility=data.get("visibility", ""),
+        users=[
+            User(username=u.get("username", ""), role=u.get("role", "read"))
+            for u in data.get("users", [])
+        ],
+    )
+
+
 def _parse_json_dict(data: dict[str, Any]) -> Workspace:
     ws_data = data.get("workspace", data)
     model_data = ws_data.get("model", {})
@@ -658,4 +695,7 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         created_date=ws_data.get("createdDate", ""),
         created_by=ws_data.get("createdUser", ws_data.get("createdBy", "")),
         documentation=_parse_documentation(ws_data.get("documentation")),
+        workspace_configuration=_parse_workspace_configuration(
+            ws_data.get("configuration")
+        ),
     )

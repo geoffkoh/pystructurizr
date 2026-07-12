@@ -66,7 +66,9 @@ from pystructurizr.models.views import (
 )
 from pystructurizr.models.workspace import (
     Model,
+    User,
     Workspace,
+    WorkspaceConfiguration,
 )
 
 __all__ = [
@@ -123,5 +125,7 @@ __all__ = [
     "ViewSet",
     # workspace
     "Model",
+    "User",
     "Workspace",
+    "WorkspaceConfiguration",
 ]

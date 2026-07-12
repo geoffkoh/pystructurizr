@@ -45,9 +45,11 @@ from pystructurizr.models import (
     RelationshipView,
     SoftwareSystem,
     SoftwareSystemInstance,
+    Terminology,
     View,
     ViewType,
     Workspace,
+    WorkspaceConfiguration,
 )
 
 JsonDict = dict[str, Any]
@@ -454,6 +456,8 @@ def _element_style(style: ElementStyle) -> JsonDict:
             "opacity": style.opacity,
             "metadata": style.metadata,
             "description": style.description,
+            "colorScheme": style.color_scheme.value if style.color_scheme else None,
+            "iconPosition": style.icon_position.value if style.icon_position else None,
         }
     )
 
@@ -467,10 +471,52 @@ def _relationship_style(style: RelationshipStyle) -> JsonDict:
             "fontSize": style.font_size,
             "width": style.width,
             "dashed": style.dashed,
+            "style": style.style.value if style.style else None,
+            "routing": style.routing.value if style.routing else None,
+            "jump": style.jump,
             "position": style.position,
             "opacity": style.opacity,
             "metadata": style.metadata,
             "description": style.description,
+            "colorScheme": style.color_scheme.value if style.color_scheme else None,
+        }
+    )
+
+
+def _terminology(terminology: Terminology) -> JsonDict:
+    """Serialise only the labels that differ from the defaults."""
+    defaults = Terminology()
+    labels = {
+        "enterprise": (terminology.enterprise, defaults.enterprise),
+        "person": (terminology.person, defaults.person),
+        "softwareSystem": (terminology.software_system, defaults.software_system),
+        "container": (terminology.container, defaults.container),
+        "component": (terminology.component, defaults.component),
+        "code": (terminology.code, defaults.code),
+        "deploymentNode": (terminology.deployment_node, defaults.deployment_node),
+        "infrastructureNode": (
+            terminology.infrastructure_node,
+            defaults.infrastructure_node,
+        ),
+        "relationship": (terminology.relationship, defaults.relationship),
+    }
+    return _clean(
+        {
+            key: (value if value != default else None)
+            for key, (value, default) in labels.items()
+        }
+    )
+
+
+def _workspace_configuration(configuration: WorkspaceConfiguration) -> JsonDict:
+    return _clean(
+        {
+            "scope": configuration.scope,
+            "visibility": configuration.visibility,
+            "users": [
+                {"username": user.username, "role": user.role}
+                for user in configuration.users
+            ],
         }
     )
 
@@ -490,6 +536,7 @@ def _configuration(configuration: Configuration) -> JsonDict:
                 }
             ),
             "themes": list(configuration.themes),
+            "terminology": _terminology(configuration.terminology),
             "defaultView": configuration.default_view,
             "lastSavedView": configuration.last_saved_view,
             "metadataSymbols": configuration.metadata_symbols,
@@ -577,6 +624,9 @@ def workspace_to_json(workspace: Workspace) -> JsonDict:
                 "createdUser": workspace.created_by,
                 "model": model,
                 "views": views,
+                "configuration": _workspace_configuration(
+                    workspace.workspace_configuration
+                ),
                 "documentation": _documentation(workspace.documentation),
             }
         )
