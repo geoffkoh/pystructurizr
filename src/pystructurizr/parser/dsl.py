@@ -518,8 +518,8 @@ class _Parser:
             if tok.type == BANG:
                 self._parse_directive("element")
                 continue
-            if tok.type == IDENT and self._lookahead_is_arrow():
-                self._parse_relationship()
+            if tok.type == ARROW or (tok.type == IDENT and self._lookahead_is_arrow()):
+                self._parse_relationship(this_id=element.id)
                 continue
             if tok.type == IDENT and self._lookahead_is_equals():
                 alias = self._advance().value
@@ -673,26 +673,62 @@ class _Parser:
             n += 1
         return f"{base}_{n}"
 
-    def _parse_relationship(self) -> None:
-        src = self._advance().value
-        self._expect(ARROW)
+    def _parse_relationship(self, this_id: str | None = None) -> None:
+        if self._match(ARROW):
+            # implicit source: `-> dst ...` inside an element body
+            self._advance()
+            src = this_id or ""
+        else:
+            src = self._advance().value
+            self._expect(ARROW)
         dst = self._advance().value
+        if this_id is not None:
+            if src.lower() == "this":
+                src = this_id
+            if dst.lower() == "this":
+                dst = this_id
         description = self._optional_string()
         technology = self._optional_string()
         # source/destination hold raw DSL identifiers; parse() resolves them
         # once the whole model is known.
-        self._rel_buffer.append(
-            Relationship(
-                source_id=src,
-                destination_id=dst,
-                description=description,
-                technology=technology,
-            )
+        rel = Relationship(
+            source_id=src,
+            destination_id=dst,
+            description=description,
+            technology=technology,
         )
-        # skip optional tags string and braces (parsed in a later phase)
-        self._optional_string()
+        tags_str = self._optional_string()
+        if tags_str:
+            rel.tags.extend(t.strip() for t in tags_str.split(",") if t.strip())
         if self._match(LBRACE):
-            self._skip_block()
+            self._parse_relationship_body(rel)
+        self._rel_buffer.append(rel)
+
+    def _parse_relationship_body(self, rel: Relationship) -> None:
+        """Parse a relationship's nested block: tags, url, properties, perspectives."""
+        self._expect(LBRACE)
+        while not self._match(RBRACE, EOF):
+            if not self._match(IDENT):
+                self._advance()
+                continue
+            kw = self._peek_value().lower()
+            if kw in ("tag", "tags"):
+                line = self._advance().line
+                while self._match(STRING) and self._peek().line == line:
+                    raw = self._advance().value.strip('"')
+                    rel.tags.extend(t.strip() for t in raw.split(",") if t.strip())
+            elif kw == "url":
+                self._advance()
+                rel.url = self._optional_string()
+            elif kw == "properties":
+                self._advance()
+                rel.properties.update(self._parse_properties_block())
+            elif kw == "perspectives":
+                self._advance()
+                rel.perspectives.extend(self._parse_perspectives_block())
+            else:
+                self._advance()
+        self._expect(RBRACE)
 
     def _parse_views(self, ws: Workspace) -> None:
         self._advance()  # consume 'views'
@@ -931,6 +967,8 @@ class _Parser:
             raw_dst = self._expect(IDENT).value
             description = self._optional_string()
             self._optional_string()  # optional technology, not stored
+            if self._match(LBRACE):
+                self._skip_block()  # step metadata block, not stored
             src = self._id_map.get(raw_src, raw_src)
             dst = self._id_map.get(raw_dst, raw_dst)
             view.relationship_views.append(
