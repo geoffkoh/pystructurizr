@@ -4,6 +4,8 @@ import * as net from "node:net";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { resolveServerCommand } from "./resolve";
+
 const HEALTH_TIMEOUT_MS = 15_000;
 const HEALTH_INTERVAL_MS = 300;
 
@@ -56,15 +58,6 @@ async function waitForServer(
   return false;
 }
 
-function serverCommand(): string[] {
-  const configured = vscode.workspace
-    .getConfiguration("pystructurizr")
-    .get<string[]>("serverCommand");
-  return configured && configured.length > 0
-    ? configured
-    : ["uv", "run", "pystructurizr"];
-}
-
 /** Webview shell: a full-bleed iframe onto the local pystructurizr server. */
 function iframeHtml(port: number): string {
   const origin = `http://127.0.0.1:${port}`;
@@ -100,9 +93,11 @@ export class PreviewManager implements vscode.Disposable {
   private server: ChildProcess | undefined;
   private currentFile: string | undefined;
   private readonly output: vscode.OutputChannel;
+  private readonly storageDir: string;
 
-  constructor() {
+  constructor(storageDir: string) {
     this.output = vscode.window.createOutputChannel("pystructurizr");
+    this.storageDir = storageDir;
   }
 
   async open(document: vscode.TextDocument): Promise<void> {
@@ -125,10 +120,23 @@ export class PreviewManager implements vscode.Disposable {
       return;
     }
 
-    const command = serverCommand();
     const cwd =
       vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ??
       path.dirname(file);
+    const command = await resolveServerCommand(cwd, this.storageDir, this.output);
+    if (!command) {
+      void vscode.window
+        .showErrorMessage(
+          "pystructurizr: no way to run the backend was found. " +
+            "Install it (pipx install pystructurizr-studio) or set " +
+            "pystructurizr.serverCommand.",
+          "Open Logs",
+        )
+        .then((choice) => {
+          if (choice) this.output.show();
+        });
+      return;
+    }
     const args = [
       ...command.slice(1),
       "webapp",

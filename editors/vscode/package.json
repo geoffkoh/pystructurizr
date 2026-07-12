@@ -2,7 +2,7 @@
   "name": "pystructurizr-vscode",
   "displayName": "pystructurizr",
   "description": "Structurizr DSL syntax highlighting and interactive C4 diagram preview, powered by pystructurizr.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "geoffkoh",
   "private": true,
   "repository": {
@@ -71,12 +71,13 @@
           "items": {
             "type": "string"
           },
-          "default": [
-            "uv",
-            "run",
-            "pystructurizr"
-          ],
-          "markdownDescription": "Command used to launch the preview server (the `webapp` subcommand and port are appended). Examples: `[\"uv\", \"run\", \"pystructurizr\"]`, `[\"pystructurizr\"]`, or an absolute path to a venv script."
+          "default": [],
+          "markdownDescription": "Command used to launch the preview server (the `webapp` subcommand and port are appended). Leave empty for automatic resolution: `pystructurizr` on PATH \u2192 the workspace project via `uv run` \u2192 `uv tool run` from PyPI \u2192 a one-time download of uv. Set explicitly to pin an environment, e.g. `[\"pystructurizr\"]` or a venv script path."
+        },
+        "pystructurizr.backendSpec": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Package spec the automatic `uv tool run` rungs install (default: the pinned `pystructurizr-studio` release matching this extension). Override for pre-releases, e.g. `git+https://github.com/geoffkoh/pystructurizr` or a local wheel path."
         }
       }
     }
