@@ -62,20 +62,21 @@ class MermaidGenerator:
         lines.append("")
 
         visible_ids = self._visible_ids(view)
+        grouped: dict[str, list[str]] = {}
 
         for person in ws.people:
             if person.id in visible_ids:
                 tag = "Person_Ext" if person.location == Location.EXTERNAL else "Person"
-                lines.append(
-                    f'    {tag}({_safe_id(person.id)}, "{_q(person.name)}", "{_q(person.description)}")'
-                )
+                entity = f'{tag}({_safe_id(person.id)}, "{_q(person.name)}", "{_q(person.description)}")'
+                self._emit(lines, grouped, entity, person.group)
 
         for system in ws.software_systems:
             if system.id in visible_ids:
                 tag = "System_Ext" if system.location == Location.EXTERNAL else "System"
-                lines.append(
-                    f'    {tag}({_safe_id(system.id)}, "{_q(system.name)}", "{_q(system.description)}")'
-                )
+                entity = f'{tag}({_safe_id(system.id)}, "{_q(system.name)}", "{_q(system.description)}")'
+                self._emit(lines, grouped, entity, system.group)
+
+        self._append_group_boundaries(lines, grouped, indent="    ")
 
         lines.append("")
         for rel in ws.all_relationships_for(visible_ids):
@@ -110,6 +111,7 @@ class MermaidGenerator:
                 lines.append(
                     f'    System_Boundary({_safe_id(system.id)}, "{_q(system.name)}") {{'
                 )
+                grouped: dict[str, list[str]] = {}
                 for container in system.containers:
                     if container.id in visible_ids or view.include_all:
                         tech = (
@@ -117,9 +119,11 @@ class MermaidGenerator:
                             if container.technology
                             else ', ""'
                         )
-                        lines.append(
-                            f'        Container({_safe_id(container.id)}, "{_q(container.name)}"{tech}, "{_q(container.description)}")'
+                        entity = f'Container({_safe_id(container.id)}, "{_q(container.name)}"{tech}, "{_q(container.description)}")'
+                        self._emit(
+                            lines, grouped, entity, container.group, indent="        "
                         )
+                self._append_group_boundaries(lines, grouped, indent="        ")
                 lines.append("    }")
             elif system.id in visible_ids and system.id != view.element_id:
                 tag = "System_Ext" if system.location == Location.EXTERNAL else "System"
@@ -165,12 +169,13 @@ class MermaidGenerator:
             lines.append(
                 f'    Container_Boundary({_safe_id(container.id)}, "{_q(container.name)}") {{'
             )
+            grouped: dict[str, list[str]] = {}
             for comp in container.components:
                 if comp.id in visible_ids or view.include_all:
                     tech = f", {_q(comp.technology)}" if comp.technology else ', ""'
-                    lines.append(
-                        f'        Component({_safe_id(comp.id)}, "{_q(comp.name)}"{tech}, "{_q(comp.description)}")'
-                    )
+                    entity = f'Component({_safe_id(comp.id)}, "{_q(comp.name)}"{tech}, "{_q(comp.description)}")'
+                    self._emit(lines, grouped, entity, comp.group, indent="        ")
+            self._append_group_boundaries(lines, grouped, indent="        ")
             lines.append("    }")
 
         # external containers / people
@@ -200,6 +205,35 @@ class MermaidGenerator:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _emit(
+        self,
+        lines: list[str],
+        grouped: dict[str, list[str]],
+        entity: str,
+        group: str,
+        indent: str = "    ",
+    ) -> None:
+        """Append an entity line, deferring grouped ones for boundary blocks."""
+        if group:
+            grouped.setdefault(group, []).append(entity)
+        else:
+            lines.append(indent + entity)
+
+    def _append_group_boundaries(
+        self, lines: list[str], grouped: dict[str, list[str]], indent: str
+    ) -> None:
+        """Emit one ``Boundary`` block per model group path.
+
+        Nested group paths (``a/b``) render as a single boundary labelled
+        with the last path segment; the boundary id embeds the full path.
+        """
+        for path, entities in grouped.items():
+            gid = _safe_id("group_" + path.replace("/", "_"))
+            label = path.split("/")[-1]
+            lines.append(f'{indent}Boundary({gid}, "{_q(label)}") {{')
+            lines.extend(f"{indent}    {entity}" for entity in entities)
+            lines.append(f"{indent}}}")
 
     def _append_rel(self, lines: list[str], rel: Relationship) -> None:
         tech = f', "{_q(rel.technology)}"' if rel.technology else ""

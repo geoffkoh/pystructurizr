@@ -25,6 +25,8 @@ from pystructurizr.parser.dsl import (
     ARROW,
     EQUALS,
     IDENT,
+    LBRACE,
+    RBRACE,
     STRING,
     collect_source_files,
     _tokenize,
@@ -41,6 +43,7 @@ _ELEMENT_KEYWORDS = frozenset(
         "component",
         "deploymentnode",
         "infrastructurenode",
+        "element",
     }
 )
 _INSTANCE_KEYWORDS = frozenset({"softwaresysteminstance", "containerinstance"})
@@ -81,9 +84,32 @@ def element_locations(root: str | Path) -> dict[str, tuple[Path, int]]:
             continue
 
         i = 0
+        depth = 0
+        # Depth of the current `styles { ... }` block, if inside one; its
+        # `element "Tag"` rules must not be indexed as element definitions.
+        styles_depth: int | None = None
         while i < len(tokens):
             tok = tokens[i]
+            if tok.type == LBRACE:
+                depth += 1
+                i += 1
+                continue
+            if tok.type == RBRACE:
+                depth -= 1
+                if styles_depth is not None and depth < styles_depth:
+                    styles_depth = None
+                i += 1
+                continue
             if tok.type != IDENT:
+                i += 1
+                continue
+            if styles_depth is None and tok.value.lower() == "styles":
+                nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+                if nxt is not None and nxt.type == LBRACE:
+                    styles_depth = depth + 1
+                i += 1
+                continue
+            if styles_depth is not None:
                 i += 1
                 continue
 

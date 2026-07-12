@@ -855,9 +855,64 @@ def build_view_graph(
                         _node(comp.id, comp, "component", x, y, child_of(comp.id))
                     )
 
+    nodes = _insert_group_boundaries(workspace, nodes)
     _apply_styles(workspace, nodes)
     _attach_stored_sizes(view, nodes)
     return {"nodes": nodes, "edges": _edges(workspace, visible, parents)}
+
+
+def _insert_group_boundaries(
+    workspace: Workspace, nodes: list[GraphNode]
+) -> list[GraphNode]:
+    """Wrap grouped elements in synthetic group boundary nodes.
+
+    Elements whose model ``group`` is set are re-parented into a chain of
+    boundary nodes, one per group path segment. Group node ids embed the
+    original parent id so identically named groups under different parents
+    stay separate, and stay stable across renders so persisted layout
+    sizes/positions keyed by id survive.
+    """
+    group_paths: dict[str, str] = {}
+    for node in nodes:
+        if node["data"].get("kind") == "boundary":
+            continue
+        element = workspace.find_element(node["id"])
+        group = getattr(element, "group", "") if element is not None else ""
+        if group:
+            group_paths[node["id"]] = group
+    if not group_paths:
+        return nodes
+
+    result: list[GraphNode] = []
+    created: set[str] = set()
+    for node in nodes:
+        path = group_paths.get(node["id"])
+        if path is None:
+            result.append(node)
+            continue
+        parent = node.get("parentId")
+        for segment in path.split("/"):
+            gid = f"__group__{parent or ''}__{segment}"
+            if gid not in created:
+                group_node: GraphNode = {
+                    "id": gid,
+                    "data": {
+                        "label": segment,
+                        "kind": "boundary",
+                        "technology": "",
+                        "description": "",
+                        "tags": [],
+                        "boundaryLabel": "Group",
+                    },
+                }
+                if parent is not None:
+                    group_node["parentId"] = parent
+                created.add(gid)
+                result.append(group_node)
+            parent = gid
+        node["parentId"] = parent
+        result.append(node)
+    return result
 
 
 def apply_sizes(view: View, sizes: dict[str, tuple[int, int]]) -> None:
