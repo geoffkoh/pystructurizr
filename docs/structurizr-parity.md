@@ -52,7 +52,7 @@ implemented every item in the original recommended roadmap.
 | Element tree | ✅ (`tree.jsp`) | ✅ sidebar |
 | Full-model graph exploration | ✅ (`explore.jsp`, d3) | ❌ |
 | Search | ✅ | ❌ |
-| Keyboard shortcuts | ✅ | ❌ |
+| Keyboard shortcuts | ✅ | ✅ j/k views, u up, f fit, p/s export, h hover, ? help overlay |
 
 ## Authoring & workspace management
 

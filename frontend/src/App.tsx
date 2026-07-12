@@ -9,10 +9,13 @@ import {
   loadFile,
 } from "./api";
 import type { ViewInfo, Workspace } from "./types";
+import { buildTrail } from "./navigation";
+import { isTypingTarget } from "./shortcuts";
 import { DocsPane } from "./components/DocsPane";
 import { ElementTree } from "./components/ElementTree";
 import { FilePicker } from "./components/FilePicker";
 import { GraphPane } from "./components/GraphPane";
+import { ShortcutHelp } from "./components/ShortcutHelp";
 import { SourcePane, type CodeFocus } from "./components/SourcePane";
 import { TopBar, type AppPage } from "./components/TopBar";
 import { ViewList } from "./components/ViewList";
@@ -36,7 +39,54 @@ export default function App() {
   const [page, setPage] = useState<AppPage>("diagrams");
   const [codeFocus, setCodeFocus] = useState<CodeFocus | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const generationRef = useRef(0);
+
+  // App-level keyboard shortcuts (diagrams page): j/k cycle views, u goes
+  // up a level, ? toggles the help overlay. Graph-scoped keys (f/p/s/h)
+  // live in KeyboardShortcuts inside the graph pane.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.key === "Escape") {
+        setHelpOpen(false);
+        return;
+      }
+      if (page !== "diagrams") return;
+      if (event.key === "?") {
+        setHelpOpen((open) => !open);
+        event.preventDefault();
+        return;
+      }
+      if (event.key === "j" || event.key === "k") {
+        const renderable = views.filter((v) => v.supported);
+        if (renderable.length === 0) return;
+        setSelectedView((current) => {
+          const index = current
+            ? renderable.findIndex((v) => v.key === current.key)
+            : -1;
+          const step = event.key === "j" ? 1 : -1;
+          const next =
+            (index + step + renderable.length) % renderable.length;
+          return renderable[next];
+        });
+        event.preventDefault();
+        return;
+      }
+      if (event.key === "u") {
+        setSelectedView((current) => {
+          if (!current) return current;
+          const trail = buildTrail(current, views, workspace);
+          const position = trail.findIndex((v) => v.key === current.key);
+          return position > 0 ? trail[position - 1] : current;
+        });
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [page, views, workspace]);
 
   // Load the file list once on mount.
   useEffect(() => {
@@ -176,6 +226,7 @@ export default function App() {
           )}
         </main>
       </div>
+      {helpOpen ? <ShortcutHelp onClose={() => setHelpOpen(false)} /> : null}
     </div>
   );
 }
