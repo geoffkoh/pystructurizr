@@ -38,7 +38,8 @@ implemented every item in the original recommended roadmap.
 | Drag nodes / persist layout | ✅ (full editor) | ✅ | Drag autosaves to a `<source>.layout.json` sidecar, restored on load and live reload; Reset returns to auto-layout. Multi-level-nested views re-run auto-layout on restore |
 | Edge routing | ✅ (orthogonal/curved, manual vertices) | ✅ | Bezier / straight / step / smooth-step, centre-anchored floating anchors; no manual vertices |
 | PNG/SVG export | ✅ | ✅ | Toolbar buttons; diagram-bounds crop, 2× PNG |
-| Filtered / custom / image views | ✅ | ❌ | Long tail |
+| Filtered views (tag include/exclude) | ✅ | ✅ | `filtered <baseKey> <include\|exclude> <tags> [key] [title]`; implicit tags participate; empty boundaries pruned; layout direction inherited from the base view |
+| Custom / image views | ✅ | ❌ | Long tail |
 | Perspectives / animation of static views / health checks | ✅ | ❌ | Long tail |
 
 ## Navigation & exploration
@@ -81,7 +82,7 @@ documentation/ADR pages, and layout persistence.
    element search outside curated views.
 2. **In-browser DSL editor** — live reload already gives a tight loop
    with an external editor, so this is convenience rather than capability.
-3. **Filtered / custom / image views, perspectives** — long-tail
-   Structurizr features with niche usage.
+3. **Custom / image views, perspectives** — long-tail Structurizr
+   features with niche usage.
 4. **Manual edge vertices** — point-to-point routing control on top of
    the floating edges.

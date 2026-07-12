@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from pystructurizr.models import RankDirection, View, ViewType, Workspace
-from pystructurizr.webapp.view_graph import KIND_COLOURS, build_view_graph
+from pystructurizr.webapp.view_graph import KIND_COLOURS, base_view, build_view_graph
 
 
 # View rank direction → dagre rankdir.
@@ -36,6 +36,7 @@ _SUPPORTED_TYPES = frozenset(
         ViewType.COMPONENT,
         ViewType.DYNAMIC,
         ViewType.DEPLOYMENT,
+        ViewType.FILTERED,
     }
 )
 
@@ -48,8 +49,8 @@ def is_supported(view: View) -> bool:
 
     Returns:
         ``True`` for ``systemLandscape``, ``systemContext``, ``container``,
-        ``component``, ``dynamic`` and ``deployment`` views; ``False``
-        otherwise.
+        ``component``, ``dynamic``, ``deployment`` and ``filtered`` views;
+        ``False`` otherwise.
     """
     return view.type in _SUPPORTED_TYPES
 
@@ -104,8 +105,15 @@ def react_flow_graph(
             edge["order"] = edge_data["order"]
         edges.append(edge)
 
+    # Filtered views carry no layout of their own; inherit the base view's.
+    layout = view.auto_layout
+    if layout is None and view.type == ViewType.FILTERED:
+        base = base_view(workspace, view)
+        if base is not None:
+            layout = base.auto_layout
+
     direction = "TB"
-    if view.auto_layout is not None:
-        direction = _RANK_DIRECTIONS.get(view.auto_layout.rank_direction, "TB")
+    if layout is not None:
+        direction = _RANK_DIRECTIONS.get(layout.rank_direction, "TB")
 
     return {"nodes": nodes, "edges": edges, "rankDirection": direction}

@@ -23,6 +23,7 @@ from pystructurizr.models import (
     DeploymentNode,
     ElementStyle,
     Enterprise,
+    FilterMode,
     InfrastructureNode,
     Location,
     Person,
@@ -592,7 +593,9 @@ class _Parser:
                     url = self._advance().value.strip('"')
                     if url:
                         ws.views.configuration.themes.append(url)
-            elif kw in ("filtered", "branding", "terminology"):
+            elif kw == "filtered":
+                ws.views.append(self._parse_filtered_view())
+            elif kw in ("branding", "terminology"):
                 self._advance()
                 self._optional_string()
                 if self._match(LBRACE):
@@ -729,6 +732,51 @@ class _Parser:
                 self._parse_view_item(view)
             self._expect(RBRACE)
         return view
+
+    def _parse_filtered_view(self) -> View:
+        """Parse ``filtered <baseKey> <include|exclude> <tags> [key] [title]``.
+
+        Tags may be a single identifier or a quoted comma-separated list.
+        """
+        self._advance()  # consume 'filtered'
+        base_key = ""
+        if self._match(IDENT):
+            base_key = self._advance().value
+        elif self._match(STRING):
+            base_key = self._advance().value.strip('"')
+
+        mode = FilterMode.INCLUDE
+        if self._match(IDENT):
+            raw_mode = self._advance().value.lower()
+            if raw_mode == "exclude":
+                mode = FilterMode.EXCLUDE
+
+        tags: list[str] = []
+        if self._match(STRING):
+            raw_tags = self._advance().value.strip('"')
+            tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        elif self._match(IDENT):
+            tags = [self._advance().value]
+
+        key = ""
+        if self._match(IDENT):
+            key = self._advance().value
+        elif self._match(STRING):
+            key = self._advance().value.strip('"')
+        title = self._optional_string()
+        description = self._optional_string()
+        if self._match(LBRACE):
+            self._skip_block()
+
+        return View(
+            type=ViewType.FILTERED,
+            key=key or f"{base_key}_{mode.value.lower()}",
+            title=title,
+            description=description,
+            base_view_key=base_key,
+            filter_mode=mode,
+            filter_tags=tags,
+        )
 
     def _parse_view_item(self, view: View) -> None:
         tok = self._peek()

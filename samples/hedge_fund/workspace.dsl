@@ -26,6 +26,8 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
             autoLayout
         }
 
+        filtered Landscape exclude "External System" InternalOnly "Quantia – Internal Systems"
+
         systemContext oms OmsContext "Order Management – System Context" {
             include *
             autoLayout
