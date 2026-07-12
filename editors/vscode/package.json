@@ -16,6 +16,8 @@
     "Programming Languages",
     "Visualization"
   ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
   "contributes": {
     "languages": [
       {
@@ -37,6 +39,58 @@
         "scopeName": "source.structurizr-dsl",
         "path": "./syntaxes/structurizr-dsl.tmLanguage.json"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "pystructurizr.openPreview",
+        "title": "Open Diagram Preview",
+        "category": "Pystructurizr",
+        "icon": "$(type-hierarchy-sub)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "pystructurizr.openPreview",
+          "when": "editorLangId == structurizr-dsl",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "pystructurizr.openPreview",
+          "when": "editorLangId == structurizr-dsl"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "pystructurizr",
+      "properties": {
+        "pystructurizr.serverCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "uv",
+            "run",
+            "pystructurizr"
+          ],
+          "markdownDescription": "Command used to launch the preview server (the `webapp` subcommand and port are appended). Examples: `[\"uv\", \"run\", \"pystructurizr\"]`, `[\"pystructurizr\"]`, or an absolute path to a venv script."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "compile": "npm run typecheck && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --watch",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5"
   }
 }
