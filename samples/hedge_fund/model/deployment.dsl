@@ -36,8 +36,8 @@ deploymentEnvironment "Production" {
         deploymentNode "Timestream Cluster" "Managed time-series storage" "TimescaleDB on EC2" {
             riskStoreInst = containerInstance riskStore
         }
-        alb = infrastructureNode "Application Load Balancer" "Terminates TLS for internal UIs and APIs" "AWS ALB"
-        dx  = infrastructureNode "Direct Connect" "Private link between AWS and the colo" "10 Gbps AWS Direct Connect"
+        alb = infrastructureNode "Application Load Balancer" "Terminates TLS for internal UIs and APIs" "AWS ALB" "Amazon Web Services - Elastic Load Balancing Application Load Balancer"
+        dx  = infrastructureNode "Direct Connect" "Private link between AWS and the colo" "10 Gbps AWS Direct Connect" "Amazon Web Services - Direct Connect"
     }
 
     // Deployment-level plumbing between infrastructure and instances.

@@ -30,8 +30,9 @@ implemented every item in the original recommended roadmap.
 | Boundary nesting | ✅ | ✅ | Nested group nodes, any depth |
 | Expand element in place | ❌ (navigation only) | ✅ | Multiple containers expandable inside a container view — pystructurizr goes beyond the Java UI here |
 | Tag-based styles (colours, text colour) | ✅ | ✅ | DSL `styles` block; implicit Element/kind tags, declaration-order overrides |
-| Shapes | ✅ (full set) | ◐ | Person/Robot silhouette, Cylinder/Bucket, Box, Circle/Ellipse, Pipe; other shapes fall back to rounded box |
-| Themes (remote theme URLs) | ✅ | ❌ | `theme`/`themes` parsed but not fetched |
+| Shapes | ✅ (full set) | ✅ | Person/Robot, Cylinder/Bucket, Box, Circle/Ellipse, Pipe, Hexagon, Folder, WebBrowser/Window, MobileDevice portrait/landscape; remaining exotics fall back to rounded box |
+| Themes (remote theme URLs) | ✅ | ✅ | `theme "https://..."` fetched, cached and merged (workspace styles win); official AWS/Azure/GCP themes attach service logo icons |
+| Element icons | ✅ | ✅ | `icon` style property and theme icons render in the node |
 | Element metadata (`[Container: Tech]` + description) | ✅ | ✅ | |
 | Auto-layout | ✅ (dagre, per-view direction) | ✅ | Recursive compound dagre; honours `autoLayout lr/tb/bt/rl` |
 | Drag nodes / persist layout | ✅ (full editor) | ✅ | Drag autosaves to a `<source>.layout.json` sidecar, restored on load and live reload; Reset returns to auto-layout. Multi-level-nested views re-run auto-layout on restore |
@@ -76,13 +77,11 @@ documentation/ADR pages, and layout persistence.
 
 ### Remaining gaps, should they ever be worth closing
 
-1. **Remote themes** — fetch and merge `theme <url>` style definitions.
-2. **More shapes** — hexagon, folder, web browser, mobile device.
-3. **Full-model explorer and search** — a d3-style model graph plus
+1. **Full-model explorer and search** — a d3-style model graph plus
    element search outside curated views.
-4. **In-browser DSL editor** — live reload already gives a tight loop
+2. **In-browser DSL editor** — live reload already gives a tight loop
    with an external editor, so this is convenience rather than capability.
-5. **Filtered / custom / image views, perspectives** — long-tail
+3. **Filtered / custom / image views, perspectives** — long-tail
    Structurizr features with niche usage.
-6. **Manual edge vertices** — point-to-point routing control on top of
+4. **Manual edge vertices** — point-to-point routing control on top of
    the floating edges.

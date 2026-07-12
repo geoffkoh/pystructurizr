@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from pystructurizr.themes import theme_styles
 from pystructurizr.models import (
     Component,
     Container,
@@ -346,10 +347,14 @@ def _apply_styles(workspace: Workspace, nodes: list[GraphNode]) -> None:
     Mirrors Structurizr style resolution: every element implicitly carries
     the ``Element`` tag plus a tag for its kind, then its own tags; element
     style rules are applied in declaration order, later matches overriding
-    earlier ones. Applied properties land in node data as ``background``,
-    ``textColor`` and ``shape``.
+    earlier ones. Remote theme styles come first, so the workspace's own
+    styles win. Applied properties land in node data as ``background``,
+    ``textColor``, ``shape`` and ``icon``.
     """
-    styles = workspace.views.configuration.styles.element_styles
+    styles = [
+        *theme_styles(workspace).element_styles,
+        *workspace.views.configuration.styles.element_styles,
+    ]
     if not styles:
         return
     for node in nodes:
@@ -367,6 +372,8 @@ def _apply_styles(workspace: Workspace, nodes: list[GraphNode]) -> None:
                 data["textColor"] = style.color
             if style.shape is not None:
                 data["shape"] = style.shape.value
+            if style.icon:
+                data["icon"] = style.icon
 
 
 def _deployment_data(workspace: Workspace, view: View) -> GraphData:
