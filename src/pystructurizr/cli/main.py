@@ -81,6 +81,33 @@ def generate(
             click.echo(f"Written: {out_path}")
 
 
+@cli.command("export")
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output file (default: print to stdout).",
+)
+def export(input_file: Path, output: Path | None) -> None:
+    """Export INPUT_FILE (DSL or JSON) as Structurizr workspace JSON.
+
+    The output round-trips with structurizr.com, Structurizr Lite, and
+    this package's own JSON parser.
+    """
+    from pystructurizr.generators.json_export import export_json, export_json_file
+
+    workspace = _load_workspace(input_file)
+    if output is None:
+        click.echo(export_json(workspace), nl=False)
+    else:
+        if output.parent != Path(""):
+            output.parent.mkdir(parents=True, exist_ok=True)
+        export_json_file(workspace, output)
+        click.echo(f"Written: {output}")
+
+
 @cli.command("list-views")
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 def list_views(input_file: Path) -> None:
