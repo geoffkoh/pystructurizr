@@ -113,7 +113,17 @@ def react_flow_graph(
             layout = base.auto_layout
 
     direction = "TB"
+    rank_separation = 100
+    node_separation = 100
     if layout is not None:
         direction = _RANK_DIRECTIONS.get(layout.rank_direction, "TB")
+        rank_separation = layout.rank_separation
+        node_separation = layout.node_separation
 
-    return {"nodes": nodes, "edges": edges, "rankDirection": direction}
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "rankDirection": direction,
+        "rankSeparation": rank_separation,
+        "nodeSeparation": node_separation,
+    }
