@@ -1,0 +1,42 @@
+{
+  "name": "pystructurizr-vscode",
+  "displayName": "pystructurizr",
+  "description": "Structurizr DSL syntax highlighting and interactive C4 diagram preview, powered by pystructurizr.",
+  "version": "0.1.0",
+  "publisher": "geoffkoh",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geoffkoh/pystructurizr"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "structurizr-dsl",
+        "aliases": [
+          "Structurizr DSL",
+          "structurizr"
+        ],
+        "extensions": [
+          ".dsl",
+          ".structurizr"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "structurizr-dsl",
+        "scopeName": "source.structurizr-dsl",
+        "path": "./syntaxes/structurizr-dsl.tmLanguage.json"
+      }
+    ]
+  }
+}

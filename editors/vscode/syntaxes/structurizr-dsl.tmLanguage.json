@@ -1,0 +1,73 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Structurizr DSL",
+  "scopeName": "source.structurizr-dsl",
+  "//": "Ported from the webapp's frontend/src/highlight.ts — keep the keyword and property sets in sync with it (and with the parser's dsl.py).",
+  "patterns": [
+    { "include": "#block-comment" },
+    { "include": "#line-comment" },
+    { "include": "#directive-line" },
+    { "include": "#string" },
+    { "include": "#color" },
+    { "include": "#arrow" },
+    { "include": "#keyword" },
+    { "include": "#property" },
+    { "include": "#definition" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "block-comment": {
+      "name": "comment.block.structurizr-dsl",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    "line-comment": {
+      "name": "comment.line.double-slash.structurizr-dsl",
+      "match": "//.*$"
+    },
+    "directive-line": {
+      "begin": "(![A-Za-z]+)\\s*",
+      "end": "(?=$)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.directive.structurizr-dsl" }
+      },
+      "contentName": "string.unquoted.path.structurizr-dsl",
+      "patterns": [{ "include": "#line-comment" }]
+    },
+    "string": {
+      "name": "string.quoted.double.structurizr-dsl",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.structurizr-dsl",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "color": {
+      "name": "constant.other.colorcode.structurizr-dsl",
+      "match": "#[0-9A-Fa-f]{3,8}\\b"
+    },
+    "arrow": {
+      "name": "keyword.operator.arrow.structurizr-dsl",
+      "match": "->"
+    },
+    "keyword": {
+      "name": "keyword.other.structurizr-dsl",
+      "match": "(?i)\\b(workspace|model|views|person|softwareSystem|container|component|deploymentNode|infrastructureNode|softwareSystemInstance|containerInstance|deploymentEnvironment|enterprise|group|systemLandscape|systemContext|dynamic|deployment|filtered|styles|element|relationship|theme|themes|branding|terminology)\\b"
+    },
+    "property": {
+      "name": "support.type.property-name.structurizr-dsl",
+      "match": "(?i)\\b(include|exclude|autoLayout|background|colour|color|stroke|shape|border|icon|fontSize|opacity|width|height|thickness|dashed)\\b"
+    },
+    "definition": {
+      "name": "variable.other.assignment.structurizr-dsl",
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*=)"
+    },
+    "number": {
+      "name": "constant.numeric.structurizr-dsl",
+      "match": "\\b[0-9]+\\b"
+    }
+  }
+}
