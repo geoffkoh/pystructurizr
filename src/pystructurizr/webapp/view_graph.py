@@ -294,6 +294,10 @@ def _edges(
     seen_pairs: set[tuple[str, str]] = set()
     seen_direct: set[tuple[str, str, str]] = set()
     for rel in workspace.relationships:
+        # Implied (linked) relationships duplicate what endpoint lifting
+        # already infers; rendering both would double the edge.
+        if rel.linked_relationship_id:
+            continue
         src = _lift(rel.source_id, visible, parents)
         dst = _lift(rel.destination_id, visible, parents)
         if src is None or dst is None or src == dst:

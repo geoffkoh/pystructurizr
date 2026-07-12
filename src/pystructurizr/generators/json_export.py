@@ -95,6 +95,7 @@ def _relationship(relationship: Relationship, nested: bool) -> JsonDict:
             "destinationId": relationship.destination_id,
             "description": relationship.description,
             "technology": relationship.technology,
+            "linkedRelationshipId": relationship.linked_relationship_id,
             "tags": _tags(relationship.tags),
             "url": relationship.url,
             "properties": dict(relationship.properties),
