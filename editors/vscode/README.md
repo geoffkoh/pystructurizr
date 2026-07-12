@@ -33,6 +33,20 @@ default the server is launched with `uv run pystructurizr` from your
 workspace folder; change the `pystructurizr.serverCommand` setting if
 you use a venv or a global install (e.g. `["pystructurizr"]`).
 
+## Install
+
+Build and install the extension locally (Node 18+):
+
+```bash
+cd editors/vscode
+npm install
+npm run package                     # -> pystructurizr-vscode-<version>.vsix
+code --install-extension pystructurizr-vscode-*.vsix
+```
+
+Then reload VS Code. (The extension is not on the Marketplace; local
+`.vsix` is the supported distribution for now.)
+
 ## Development
 
 1. `npm install && npm run compile` in `editors/vscode/`.
@@ -40,5 +54,3 @@ you use a venv or a global install (e.g. `["pystructurizr"]`).
 3. In the Extension Development Host, open
    `samples/hedge_fund/workspace.dsl` and click the preview icon in the
    editor title bar.
-
-Packaging as an installable `.vsix` arrives with part 3.
