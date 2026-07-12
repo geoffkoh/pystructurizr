@@ -61,6 +61,8 @@ implemented every item in the original recommended roadmap.
 | DSL parsing incl. `!include` | ✅ | ✅ |
 | Element body metadata (`description`, `technology`, `url`, `tags`, `properties`, `perspectives`) | ✅ | ✅ parsed into the model + JSON export; not rendered |
 | Relationship metadata (positional tags + nested `tags`/`url`/`properties`/`perspectives`) and `this`/implicit-source relationships | ✅ | ✅ parsed into the model + JSON export |
+| `group` blocks (model level, element bodies, nested) | ✅ | ✅ membership on elements + JSON export; rendered as boundary nodes in the webapp and `Boundary` blocks in Mermaid |
+| Custom elements (`element` keyword) | ✅ | ✅ parsed + JSON export; relationships resolve; not shown in built-in views (custom views still ❌) |
 | Unknown `!directives` | ✅ (executed or errors) | ⚠ skipped with an `UnsupportedFeatureWarning` recorded in `Workspace.parse_warnings` |
 | `deploymentEnvironment`, instances | ✅ | ✅ |
 | Live reload on DSL edits | ✅ | ✅ mtime heartbeat over source + `!include` fragments + docs; parse errors keep the last good workspace |

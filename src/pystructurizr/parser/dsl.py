@@ -21,6 +21,7 @@ from pystructurizr.models import (
     Component,
     Container,
     ContainerInstance,
+    CustomElement,
     DeploymentNode,
     ElementStyle,
     Enterprise,
@@ -148,6 +149,12 @@ class _Parser:
         self._warnings: list[str] = []
         # active deploymentEnvironment name while parsing its block
         self._current_environment: str = ""
+        # active group names while parsing nested group blocks
+        self._group_stack: list[str] = []
+
+    @property
+    def _current_group(self) -> str:
+        return "/".join(g for g in self._group_stack if g)
 
     def _peek(self) -> Token:
         return self._tokens[self._pos]
@@ -318,6 +325,7 @@ class _Parser:
                 "infrastructurenode",
                 "softwaresysteminstance",
                 "containerinstance",
+                "element",
             ):
                 self._parse_element(ws, alias=None, parent_id=parent_id)
                 return
@@ -356,6 +364,9 @@ class _Parser:
         if kw in ("softwaresysteminstance", "containerinstance") and self._match(IDENT):
             ref_ident = self._advance().value
         name = self._optional_string()
+        # element <name> [metadata] [description] [tags] — custom elements
+        # take a metadata string before the description.
+        metadata = self._optional_string() if kw == "element" else ""
         description = self._optional_string()
         technology = (
             self._optional_string()
@@ -385,6 +396,7 @@ class _Parser:
                 description=description,
                 tags=tags,
                 location=location,
+                group=self._current_group,
             )
             ws.people.append(elem)
             if alias:
@@ -399,6 +411,7 @@ class _Parser:
                 description=description,
                 tags=tags,
                 location=location,
+                group=self._current_group,
             )
             ws.software_systems.append(sys_elem)
             if alias:
@@ -415,6 +428,7 @@ class _Parser:
                     technology=technology,
                     tags=tags,
                     parent_id=system.id,
+                    group=self._current_group,
                 )
                 system.containers.append(c)
                 if alias:
@@ -431,6 +445,7 @@ class _Parser:
                     technology=technology,
                     tags=tags,
                     parent_id=container.id,
+                    group=self._current_group,
                 )
                 container.components.append(comp)
                 if alias:
@@ -448,6 +463,7 @@ class _Parser:
                 tags=tags,
                 environment=self._current_environment,
                 parent_id=parent_node.id if parent_node is not None else "",
+                group=self._current_group,
             )
             if parent_node is not None:
                 parent_node.children.append(node)
@@ -466,6 +482,7 @@ class _Parser:
                 technology=technology,
                 tags=tags,
                 parent_id=parent_node.id if parent_node is not None else "",
+                group=self._current_group,
             )
             if parent_node is not None:
                 parent_node.infrastructure_nodes.append(infra)
@@ -503,6 +520,20 @@ class _Parser:
             self._id_map[alias or inst_id] = inst_id
             if self._match(LBRACE):
                 self._parse_element_body(ws, cont_inst, "containerinstance")
+        elif kw == "element":
+            custom = CustomElement(
+                id=elem_id,
+                name=name,
+                metadata=metadata,
+                description=description,
+                tags=tags,
+                group=self._current_group,
+            )
+            ws.model.custom_elements.append(custom)
+            if alias:
+                self._id_map[alias] = elem_id
+            if self._match(LBRACE):
+                self._parse_element_body(ws, custom, "element")
 
     def _parse_element_body(self, ws: Workspace, element: Any, kind: str) -> None:
         """Parse the ``{ ... }`` body shared by every element kind.
@@ -513,6 +544,10 @@ class _Parser:
         """
         self._expect(LBRACE)
         children = _CHILD_KEYWORDS.get(kind, ())
+        # Group context does not cross parent boundaries: a container of a
+        # grouped system is not itself in the group (structurizr-java).
+        saved_groups = self._group_stack
+        self._group_stack = []
         while not self._match(RBRACE, EOF):
             tok = self._peek()
             if tok.type == BANG:
@@ -541,6 +576,7 @@ class _Parser:
                     continue
             self._advance()
         self._expect(RBRACE)
+        self._group_stack = saved_groups
 
     def _parse_common_element_keyword(self, element: Any, kw: str) -> bool:
         """Handle a metadata keyword valid on any element; True if handled."""
@@ -636,13 +672,23 @@ class _Parser:
             self._expect(RBRACE)
 
     def _parse_group(self, ws: Workspace, parent_id: str | None) -> None:
+        """Parse ``group "Name" { ... }``; members record the group path.
+
+        Nested group paths join with ``/`` and set the
+        ``structurizr.groupSeparator`` model property, matching
+        structurizr-java.
+        """
         self._advance()  # consume 'group'
-        self._optional_string()  # group name
+        name = self._optional_string()
+        self._group_stack.append(name)
+        if len(self._group_stack) > 1:
+            ws.model.properties.setdefault("structurizr.groupSeparator", "/")
         if self._match(LBRACE):
             self._expect(LBRACE)
             while not self._match(RBRACE, EOF):
                 self._parse_model_item(ws, parent_id)
             self._expect(RBRACE)
+        self._group_stack.pop()
 
     def _parse_deployment_environment(self, ws: Workspace) -> None:
         """Parse ``deploymentEnvironment "Name" { ... }``.

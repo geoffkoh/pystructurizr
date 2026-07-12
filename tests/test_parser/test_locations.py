@@ -112,3 +112,45 @@ def test_docs_markdown_is_not_scanned(tmp_path: Path) -> None:
     )
     locations = element_locations(source)
     assert set(locations) == {"u"}
+
+
+def test_locates_custom_elements(tmp_path: Path) -> None:
+    source = tmp_path / "w.dsl"
+    source.write_text(
+        """
+workspace "W" {
+    model {
+        box = element "Box"
+        element "Plain Thing"
+    }
+}
+""",
+        encoding="utf-8",
+    )
+    locations = element_locations(source)
+    assert locations["box"][1] == 4
+    assert locations["plain_thing"][1] == 5
+
+
+def test_style_rules_are_not_indexed_as_elements(tmp_path: Path) -> None:
+    source = tmp_path / "w.dsl"
+    source.write_text(
+        """
+workspace "W" {
+    model {
+        s = softwareSystem "Sys"
+    }
+    views {
+        styles {
+            element "Styled Tag" {
+                background #ff0000
+            }
+        }
+    }
+}
+""",
+        encoding="utf-8",
+    )
+    locations = element_locations(source)
+    assert "s" in locations
+    assert "styled_tag" not in locations
