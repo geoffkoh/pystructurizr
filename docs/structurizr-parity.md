@@ -64,7 +64,7 @@ implemented every item in the original recommended roadmap.
 | `group` blocks (model level, element bodies, nested) | ✅ | ✅ membership on elements + JSON export; rendered as boundary nodes in the webapp and `Boundary` blocks in Mermaid |
 | Custom elements (`element` keyword) | ✅ | ✅ parsed + JSON export; relationships resolve; not shown in built-in views (custom views still ❌) |
 | Unknown `!directives` | ✅ (executed or errors) | ⚠ skipped with an `UnsupportedFeatureWarning` recorded in `Workspace.parse_warnings` |
-| `deploymentEnvironment`, instances | ✅ | ✅ |
+| `deploymentEnvironment`, instances | ✅ | ✅ incl. instance counts, `deploymentGroup` declarations + instance membership, positional/nested instance tags, `healthCheck` |
 | Live reload on DSL edits | ✅ | ✅ mtime heartbeat over source + `!include` fragments + docs; parse errors keep the last good workspace |
 | In-browser DSL editor | ✅ | ❌ (edit on disk; live reload covers the loop) |
 | Documentation / ADR rendering | ✅ | ✅ `!docs`/`!adrs` directives, TOC reader, ADR status badges |
