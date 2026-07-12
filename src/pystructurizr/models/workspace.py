@@ -101,6 +101,9 @@ class Workspace:
     created_date: str = ""
     created_by: str = ""
     documentation: Documentation = field(default_factory=Documentation)
+    # Non-fatal warnings collected while parsing (e.g. unsupported DSL
+    # features that were skipped); never serialised to workspace JSON.
+    parse_warnings: list[str] = field(default_factory=list)
 
     @property
     def people(self) -> list[Person]:
