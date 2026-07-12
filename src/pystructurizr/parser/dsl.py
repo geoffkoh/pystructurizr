@@ -19,6 +19,8 @@ from pystructurizr.models import (
     Animation,
     AutomaticLayout,
     Border,
+    Branding,
+    ColorScheme,
     Component,
     Container,
     ContainerInstance,
@@ -28,7 +30,9 @@ from pystructurizr.models import (
     Enterprise,
     FilterMode,
     HttpHealthCheck,
+    IconPosition,
     InfrastructureNode,
+    LineStyle,
     Location,
     Person,
     Perspective,
@@ -36,9 +40,11 @@ from pystructurizr.models import (
     Relationship,
     RelationshipStyle,
     RelationshipView,
+    Routing,
     Shape,
     SoftwareSystem,
     SoftwareSystemInstance,
+    User,
     View,
     ViewType,
     Workspace,
@@ -117,6 +123,23 @@ def _tokenize(text: str) -> list[Token]:
 
 _SHAPE_MAP = {shape.value.lower(): shape for shape in Shape}
 _BORDER_MAP = {border.value.lower(): border for border in Border}
+
+_LINE_STYLE_MAP = {line_style.value.lower(): line_style for line_style in LineStyle}
+_ROUTING_MAP = {routing.value.lower(): routing for routing in Routing}
+_ICON_POSITION_MAP = {pos.value.lower(): pos for pos in IconPosition}
+
+# terminology keyword → Terminology attribute
+_TERMINOLOGY_FIELDS = {
+    "enterprise": "enterprise",
+    "person": "person",
+    "softwaresystem": "software_system",
+    "container": "container",
+    "component": "component",
+    "code": "code",
+    "deploymentnode": "deployment_node",
+    "infrastructurenode": "infrastructure_node",
+    "relationship": "relationship",
+}
 
 _RANK_DIRECTION_MAP = {
     "tb": RankDirection.TOP_BOTTOM,
@@ -236,14 +259,57 @@ class _Parser:
                 self._parse_views(ws)
             elif kw == "configuration":
                 self._advance()
-                if self._match(LBRACE):
-                    self._skip_block()
+                self._parse_workspace_configuration(ws)
+            elif kw == "name":
+                self._advance()
+                value = self._optional_string()
+                if value:
+                    ws.name = value
+            elif kw == "description":
+                self._advance()
+                value = self._optional_string()
+                if value:
+                    ws.description = value
+            elif kw == "properties":
+                self._advance()
+                # structurizr-java stores workspace properties on the views
+                # configuration.
+                ws.views.configuration.properties.update(self._parse_properties_block())
             else:
                 self._advance()
 
         if self._match(RBRACE):
             self._advance()
         return ws
+
+    def _parse_workspace_configuration(self, ws: Workspace) -> None:
+        """Parse ``configuration { scope, visibility, users { ... } }``."""
+        if not self._match(LBRACE):
+            return
+        self._expect(LBRACE)
+        config = ws.workspace_configuration
+        while not self._match(RBRACE, EOF):
+            if not self._match(IDENT):
+                self._advance()
+                continue
+            kw = self._advance().value.lower()
+            if kw == "scope":
+                config.scope = self._optional_ident() or self._optional_string()
+            elif kw == "visibility":
+                config.visibility = self._optional_ident() or self._optional_string()
+            elif kw == "users" and self._match(LBRACE):
+                self._expect(LBRACE)
+                while not self._match(RBRACE, EOF):
+                    if self._match(IDENT, STRING):
+                        username = self._advance().value.strip('"')
+                        role = self._optional_ident() or self._optional_string()
+                        config.users.append(User(username=username, role=role))
+                    else:
+                        self._advance()
+                self._expect(RBRACE)
+            elif self._match(LBRACE):
+                self._skip_block()
+        self._expect(RBRACE)
 
     def _optional_ident(self) -> str:
         if self._match(IDENT):
@@ -884,13 +950,50 @@ class _Parser:
                         ws.views.configuration.themes.append(url)
             elif kw == "filtered":
                 ws.views.append(self._parse_filtered_view())
-            elif kw in ("branding", "terminology"):
+            elif kw == "branding":
                 self._advance()
-                self._optional_string()
-                if self._match(LBRACE):
-                    self._skip_block()
+                self._parse_branding(ws)
+            elif kw == "terminology":
+                self._advance()
+                self._parse_terminology(ws)
             else:
                 self._advance()
+        self._expect(RBRACE)
+
+    def _parse_branding(self, ws: Workspace) -> None:
+        """Parse ``branding { logo <url> font <name> [url] }``."""
+        if not self._match(LBRACE):
+            return
+        self._expect(LBRACE)
+        branding = ws.views.configuration.branding or Branding()
+        while not self._match(RBRACE, EOF):
+            if not self._match(IDENT):
+                self._advance()
+                continue
+            kw = self._advance().value.lower()
+            if kw == "logo":
+                branding.logo = self._optional_string()
+            elif kw == "font":
+                branding.font = self._optional_string()
+                self._optional_string()  # optional web font url, not stored
+        self._expect(RBRACE)
+        ws.views.configuration.branding = branding
+
+    def _parse_terminology(self, ws: Workspace) -> None:
+        """Parse ``terminology { <element kind> <label> ... }``."""
+        if not self._match(LBRACE):
+            return
+        self._expect(LBRACE)
+        terminology = ws.views.configuration.terminology
+        while not self._match(RBRACE, EOF):
+            if not self._match(IDENT):
+                self._advance()
+                continue
+            kw = self._advance().value.lower()
+            attr = _TERMINOLOGY_FIELDS.get(kw)
+            value = self._optional_string()
+            if attr and value:
+                setattr(terminology, attr, value)
         self._expect(RBRACE)
 
     def _parse_styles(self, ws: Workspace) -> None:
@@ -909,13 +1012,15 @@ class _Parser:
             if kw == "element":
                 self._advance()
                 style = ElementStyle(tag=self._optional_string())
-                self._parse_element_style_body(style)
+                variants = self._parse_element_style_body(style)
                 styles.element_styles.append(style)
+                styles.element_styles.extend(variants)
             elif kw == "relationship":
                 self._advance()
                 rel_style = RelationshipStyle(tag=self._optional_string())
-                self._parse_relationship_style_body(rel_style)
+                rel_variants = self._parse_relationship_style_body(rel_style)
                 styles.relationship_styles.append(rel_style)
+                styles.relationship_styles.extend(rel_variants)
             else:
                 self._advance()
         self._expect(RBRACE)
@@ -928,15 +1033,27 @@ class _Parser:
             return self._advance().value
         return ""
 
-    def _parse_element_style_body(self, style: ElementStyle) -> None:
+    def _parse_element_style_body(self, style: ElementStyle) -> list[ElementStyle]:
+        """Parse an element style block; returns light/dark variant styles."""
+        variants: list[ElementStyle] = []
         if not self._match(LBRACE):
-            return
+            return variants
         self._expect(LBRACE)
         while not self._match(RBRACE, EOF):
             if not self._match(IDENT):
                 self._advance()
                 continue
             prop = self._advance().value.lower()
+            if prop in ("light", "dark") and self._match(LBRACE):
+                variant = ElementStyle(
+                    tag=style.tag,
+                    color_scheme=(
+                        ColorScheme.LIGHT if prop == "light" else ColorScheme.DARK
+                    ),
+                )
+                variants.append(variant)
+                variants.extend(self._parse_element_style_body(variant))
+                continue
             value = self._style_value()
             if prop == "background":
                 style.background = value
@@ -944,12 +1061,16 @@ class _Parser:
                 style.color = value
             elif prop == "stroke":
                 style.stroke = value
+            elif prop == "strokewidth" and value.isdigit():
+                style.stroke_width = int(value)
             elif prop == "shape":
                 style.shape = _SHAPE_MAP.get(value.lower())
             elif prop == "border":
                 style.border = _BORDER_MAP.get(value.lower())
             elif prop == "icon":
                 style.icon = value
+            elif prop == "iconposition":
+                style.icon_position = _ICON_POSITION_MAP.get(value.lower())
             elif prop == "fontsize" and value.isdigit():
                 style.font_size = int(value)
             elif prop == "opacity" and value.isdigit():
@@ -958,18 +1079,37 @@ class _Parser:
                 style.width = int(value)
             elif prop == "height" and value.isdigit():
                 style.height = int(value)
+            elif prop == "metadata":
+                style.metadata = value.lower() == "true"
+            elif prop == "description":
+                style.description = value.lower() == "true"
             # Unknown properties: the value token is consumed; ignore.
         self._expect(RBRACE)
+        return variants
 
-    def _parse_relationship_style_body(self, style: RelationshipStyle) -> None:
+    def _parse_relationship_style_body(
+        self, style: RelationshipStyle
+    ) -> list[RelationshipStyle]:
+        """Parse a relationship style block; returns light/dark variants."""
+        variants: list[RelationshipStyle] = []
         if not self._match(LBRACE):
-            return
+            return variants
         self._expect(LBRACE)
         while not self._match(RBRACE, EOF):
             if not self._match(IDENT):
                 self._advance()
                 continue
             prop = self._advance().value.lower()
+            if prop in ("light", "dark") and self._match(LBRACE):
+                variant = RelationshipStyle(
+                    tag=style.tag,
+                    color_scheme=(
+                        ColorScheme.LIGHT if prop == "light" else ColorScheme.DARK
+                    ),
+                )
+                variants.append(variant)
+                variants.extend(self._parse_relationship_style_body(variant))
+                continue
             value = self._style_value()
             if prop in ("color", "colour"):
                 style.color = value
@@ -981,7 +1121,22 @@ class _Parser:
                 style.font_size = int(value)
             elif prop == "dashed":
                 style.dashed = value.lower() == "true"
+            elif prop == "style":
+                style.style = _LINE_STYLE_MAP.get(value.lower())
+            elif prop == "routing":
+                style.routing = _ROUTING_MAP.get(value.lower())
+            elif prop == "jump":
+                style.jump = value.lower() == "true"
+            elif prop == "position" and value.isdigit():
+                style.position = int(value)
+            elif prop == "opacity" and value.isdigit():
+                style.opacity = int(value)
+            elif prop == "metadata":
+                style.metadata = value.lower() == "true"
+            elif prop == "description":
+                style.description = value.lower() == "true"
         self._expect(RBRACE)
+        return variants
 
     def _parse_view(self, view_type: ViewType) -> View:
         self._advance()  # consume keyword

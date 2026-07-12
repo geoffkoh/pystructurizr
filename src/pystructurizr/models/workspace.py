@@ -86,6 +86,27 @@ class Model:
 
 
 @dataclass
+class User:
+    """A user granted access to the workspace (Structurizr configuration)."""
+
+    username: str
+    role: str = "read"
+
+
+@dataclass
+class WorkspaceConfiguration:
+    """Workspace-level configuration: scope, visibility, and users.
+
+    Distinct from the *views* :class:`Configuration` exposed as
+    ``Workspace.configuration``.
+    """
+
+    scope: str = ""
+    visibility: str = ""
+    users: list[User] = field(default_factory=list)
+
+
+@dataclass
 class Workspace:
     """Root container for an entire Structurizr model."""
 
@@ -104,6 +125,9 @@ class Workspace:
     # Non-fatal warnings collected while parsing (e.g. unsupported DSL
     # features that were skipped); never serialised to workspace JSON.
     parse_warnings: list[str] = field(default_factory=list)
+    workspace_configuration: WorkspaceConfiguration = field(
+        default_factory=WorkspaceConfiguration
+    )
 
     @property
     def people(self) -> list[Person]:

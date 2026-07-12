@@ -29,7 +29,7 @@ implemented every item in the original recommended roadmap.
 | Deployment views | ✅ | ✅ | Nested deployment nodes, container/system instances, derived instance edges, environment + scope filtering |
 | Boundary nesting | ✅ | ✅ | Nested group nodes, any depth |
 | Expand element in place | ❌ (navigation only) | ✅ | Multiple containers expandable inside a container view — pystructurizr goes beyond the Java UI here |
-| Tag-based styles (colours, text colour) | ✅ | ✅ | DSL `styles` block; implicit Element/kind tags, declaration-order overrides |
+| Tag-based styles (colours, text colour) | ✅ | ✅ | DSL `styles` block; implicit Element/kind tags, declaration-order overrides; full property set incl. strokeWidth/iconPosition/metadata/description, relationship style/routing/jump/position/opacity, and `light`/`dark` colour-scheme variants (parsed + JSON; webapp edge styling not yet wired) |
 | Shapes | ✅ (full set) | ✅ | Person/Robot, Cylinder/Bucket, Box, Circle/Ellipse, Pipe, Hexagon, Folder, WebBrowser/Window, MobileDevice portrait/landscape; remaining exotics fall back to rounded box |
 | Themes (remote theme URLs) | ✅ | ✅ | `theme "https://..."` fetched, cached and merged (workspace styles win); official AWS/Azure/GCP themes attach service logo icons |
 | Element icons | ✅ | ✅ | `icon` style property and theme icons render in the node |
@@ -72,6 +72,8 @@ implemented every item in the original recommended roadmap.
 | Workspace JSON import | ✅ | ✅ |
 | Workspace JSON export (round-trip) | ✅ | ✅ CLI `export` + `generators/json_export` |
 | Layout persistence | ✅ (in workspace) | ✅ (sidecar JSON next to the source) |
+| Branding / terminology from DSL | ✅ | ✅ parsed + JSON export (terminology export bug fixed) |
+| Workspace `configuration { scope, visibility, users }` | ✅ | ✅ parsed + JSON round-trip (informational; no auth enforcement) |
 | Multi-workspace, users, locking, branches | ✅ | ❌ (single local user by design) |
 | Mermaid export | ❌ (PlantUML et al. via structurizr-export) | ✅ CLI |
 
