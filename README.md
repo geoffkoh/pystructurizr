@@ -36,6 +36,7 @@ ws.views.append(view)
 
 - **[Data Models Reference](./docs/data-models.md)** - Complete guide to all Structurizr models and their fields
 - **[Getting Started](./docs/README.md)** - Workflow and common patterns
+- **[Enterprise Roadmap](./docs/roadmap.md)** - Parked phases 2-4 (model intelligence, headless rendering, differentiators)
 
 ## Features
 
