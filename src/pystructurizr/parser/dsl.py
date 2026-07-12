@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from pystructurizr.parser.docs import load_decisions, load_sections, markdown_files
+from pystructurizr.parser.implied import apply_implied_relationships
 from pystructurizr.models import (
     Animation,
     AutomaticLayout,
@@ -191,6 +192,11 @@ class _Parser:
         self._deployment_groups: dict[str, str] = {}
         # key of the view marked `default`, applied to the configuration
         self._default_view_key: str = ""
+        # workspace under construction, for directives that mutate it
+        self._ws: Workspace | None = None
+        # relationship aliases (`rel = a -> b ...`) for !relationship
+        self._rel_aliases: dict[str, Relationship] = {}
+        self._implied_relationships = False
 
     @property
     def _current_group(self) -> str:
@@ -235,6 +241,8 @@ class _Parser:
                 rel.destination_id, rel.destination_id
             )
             ws.relationships.append(rel)
+        if self._implied_relationships:
+            apply_implied_relationships(ws)
         if self._default_view_key:
             ws.views.configuration.default_view = self._default_view_key
         ws.parse_warnings = self._warnings
@@ -247,6 +255,7 @@ class _Parser:
         self._expect(LBRACE)
 
         ws = Workspace(name=name, description=description)
+        self._ws = ws
 
         while not self._match(RBRACE, EOF):
             if self._match(BANG):
@@ -368,6 +377,37 @@ class _Parser:
         if self._match(IDENT) and self._peek().line == line:
             self._advance()
 
+    def _directive_impliedrelationships(self, scope: str, line: int) -> None:
+        value = ""
+        if self._match(IDENT) and self._peek().line == line:
+            value = self._advance().value.lower()
+        self._implied_relationships = value == "true"
+
+    def _directive_element(self, scope: str, line: int) -> None:
+        """``!element <identifier> { ... }`` — extend an existing element."""
+        ref = self._optional_ident() or self._optional_string()
+        element = None
+        if self._ws is not None and ref:
+            element = self._ws.find_element(self._id_map.get(ref, ref))
+        if element is None or self._ws is None:
+            if self._match(LBRACE):
+                self._skip_block()
+            return
+        if self._match(LBRACE):
+            kind = type(element).__name__.lower()
+            if kind == "customelement":
+                kind = "element"
+            self._parse_element_body(self._ws, element, kind)
+
+    def _directive_relationship(self, scope: str, line: int) -> None:
+        """``!relationship <alias> { ... }`` — extend an aliased relationship."""
+        ref = self._optional_ident() or self._optional_string()
+        rel = self._rel_aliases.get(ref)
+        if rel is not None and self._match(LBRACE):
+            self._parse_relationship_body(rel)
+        elif self._match(LBRACE):
+            self._skip_block()
+
     def _warn(self, message: str) -> None:
         self._warnings.append(message)
         warnings.warn(message, UnsupportedFeatureWarning, stacklevel=2)
@@ -391,10 +431,14 @@ class _Parser:
             self._parse_relationship()
             return
 
-        # assignment: identifier = element_type ...
+        # assignment: identifier = element_type ... or identifier = a -> b
         if tok.type == IDENT and self._lookahead_is_equals():
             alias = self._advance().value
             self._expect(EQUALS)
+            if self._peek().type == IDENT and self._lookahead_is_arrow():
+                self._parse_relationship()
+                self._rel_aliases[alias] = self._rel_buffer[-1]
+                return
             self._parse_element(ws, alias, parent_id)
             return
 
@@ -429,10 +473,21 @@ class _Parser:
         self._advance()
 
     def _lookahead_is_arrow(self) -> bool:
+        # Relationships are single-line statements; scanning past the line
+        # would match an unrelated `->` on a following line.
+        line = self._peek().line
         i = self._pos + 1
-        while i < len(self._tokens) and self._tokens[i].type in (IDENT, STRING):
+        while (
+            i < len(self._tokens)
+            and self._tokens[i].type in (IDENT, STRING)
+            and self._tokens[i].line == line
+        ):
             i += 1
-        return i < len(self._tokens) and self._tokens[i].type == ARROW
+        return (
+            i < len(self._tokens)
+            and self._tokens[i].type == ARROW
+            and self._tokens[i].line == line
+        )
 
     def _lookahead_is_equals(self) -> bool:
         return (

@@ -70,6 +70,8 @@ implemented every item in the original recommended roadmap.
 | In-browser DSL editor | ✅ | ❌ (edit on disk; live reload covers the loop) |
 | Documentation / ADR rendering | ✅ | ✅ `!docs`/`!adrs` directives, TOC reader, ADR status badges |
 | `!const` / `!var` + `${NAME}` substitution | ✅ | ✅ preprocessing pass; const redefinition errors, unknown placeholders left intact |
+| `!impliedRelationships` | ✅ (default on) | ✅ opt-in via `!impliedRelationships true`; implied relationships carry `linkedRelationshipId` and are deduped in the webapp |
+| `!element` / `!relationship` extension blocks | ✅ | ✅ incl. relationship aliases (`rel = a -> b`) and adding children via `!element` |
 | `!script` / `!plugin` / `!components` | ✅ (executes JVM code) | ⚠ never executed: stripped/skipped with an `UnsupportedFeatureWarning`; CLI prints warnings to stderr |
 | Workspace JSON import | ✅ | ✅ |
 | Workspace JSON export (round-trip) | ✅ | ✅ CLI `export` + `generators/json_export` |

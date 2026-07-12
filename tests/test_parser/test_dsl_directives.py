@@ -28,18 +28,18 @@ def test_unknown_directive_with_argument_warns_and_skips():
     dsl = """
     workspace "W" {
         model {
-            !impliedRelationships false
+            !someUnknownDirective false
             u = person "User"
             s = softwareSystem "S"
             u -> s "Uses"
         }
     }
     """
-    with pytest.warns(UnsupportedFeatureWarning, match="impliedRelationships"):
+    with pytest.warns(UnsupportedFeatureWarning, match="someUnknownDirective"):
         ws = parse_dsl(dsl)
     assert len(ws.people) == 1
     assert len(ws.relationships) == 1
-    assert any("impliedRelationships" in w for w in ws.parse_warnings)
+    assert any("someUnknownDirective" in w for w in ws.parse_warnings)
 
 
 def test_unknown_directive_with_block_is_skipped():

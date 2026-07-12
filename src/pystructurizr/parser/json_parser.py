@@ -200,6 +200,7 @@ def _parse_relationship(data: dict[str, Any]) -> Relationship:
         technology=data.get("technology", ""),
         tags=_tags(data.get("tags")),
         url=data.get("url", ""),
+        linked_relationship_id=data.get("linkedRelationshipId", ""),
         properties=_properties(data.get("properties")),
         perspectives=_perspectives(data.get("perspectives")),
     )
