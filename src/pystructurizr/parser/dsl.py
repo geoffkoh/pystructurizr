@@ -9,9 +9,10 @@ Supports a subset of the Structurizr DSL spec:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Any
 
 from pystructurizr.parser.docs import load_decisions, load_sections, markdown_files
 from pystructurizr.models import (
@@ -27,6 +28,7 @@ from pystructurizr.models import (
     InfrastructureNode,
     Location,
     Person,
+    Perspective,
     RankDirection,
     Relationship,
     RelationshipStyle,
@@ -113,9 +115,25 @@ def _tokenize(text: str) -> list[Token]:
 _SHAPE_MAP = {shape.value.lower(): shape for shape in Shape}
 _BORDER_MAP = {border.value.lower(): border for border in Border}
 
+# Child-element keywords allowed inside each element kind's body.
+_CHILD_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "softwaresystem": ("container",),
+    "container": ("component",),
+    "deploymentnode": (
+        "deploymentnode",
+        "infrastructurenode",
+        "softwaresysteminstance",
+        "containerinstance",
+    ),
+}
+
 
 class ParseError(Exception):
     pass
+
+
+class UnsupportedFeatureWarning(UserWarning):
+    """Warning issued when the DSL uses a feature the parser ignores."""
 
 
 class _Parser:
@@ -124,7 +142,10 @@ class _Parser:
         self._pos = 0
         # maps DSL identifier → element id used in Workspace
         self._id_map: dict[str, str] = {}
-        self._rel_buffer: list[tuple[str, str, str, str]] = []
+        # relationships whose source/destination hold raw DSL identifiers
+        # until the whole model has been parsed
+        self._rel_buffer: list[Relationship] = []
+        self._warnings: list[str] = []
         # active deploymentEnvironment name while parsing its block
         self._current_environment: str = ""
 
@@ -161,15 +182,13 @@ class _Parser:
     def parse(self) -> Workspace:
         ws = self._parse_workspace()
         # resolve buffered relationships
-        for src, dst, desc, tech in self._rel_buffer:
-            ws.relationships.append(
-                Relationship(
-                    source_id=self._id_map.get(src, src),
-                    destination_id=self._id_map.get(dst, dst),
-                    description=desc,
-                    technology=tech,
-                )
+        for rel in self._rel_buffer:
+            rel.source_id = self._id_map.get(rel.source_id, rel.source_id)
+            rel.destination_id = self._id_map.get(
+                rel.destination_id, rel.destination_id
             )
+            ws.relationships.append(rel)
+        ws.parse_warnings = self._warnings
         return ws
 
     def _parse_workspace(self) -> Workspace:
@@ -181,16 +200,18 @@ class _Parser:
         ws = Workspace(name=name, description=description)
 
         while not self._match(RBRACE, EOF):
+            if self._match(BANG):
+                self._parse_directive("workspace")
+                continue
             kw = self._peek_value().lower()
             if kw == "model":
                 self._parse_model(ws)
             elif kw == "views":
                 self._parse_views(ws)
             elif kw == "configuration":
-                self._skip_block()
-            elif kw == "!identifiers":
-                self._advance()  # consume keyword
-                self._optional_ident()  # consume optional arg
+                self._advance()
+                if self._match(LBRACE):
+                    self._skip_block()
             else:
                 self._advance()
 
@@ -223,6 +244,42 @@ class _Parser:
                 f"Line {tok.line}: expected keyword '{kw}', got {tok.value!r}"
             )
 
+    def _parse_directive(self, scope: str) -> None:
+        """Parse a ``!directive`` encountered at the given scope.
+
+        Known directives dispatch to a ``_directive_<name>`` method; unknown
+        ones are skipped (their same-line arguments plus any ``{...}`` block)
+        and recorded as an unsupported-feature warning.
+        """
+        self._expect(BANG)
+        if not self._match(IDENT):
+            return
+        name_tok = self._advance()
+        handler = getattr(self, f"_directive_{name_tok.value.lower()}", None)
+        if handler is not None:
+            handler(scope, name_tok.line)
+            return
+        while (
+            self._match(IDENT, STRING, NUMBER, COLOR, WILDCARD, EQUALS)
+            and self._peek().line == name_tok.line
+        ):
+            self._advance()
+        if self._match(LBRACE):
+            self._skip_block()
+        self._warn(
+            f"Line {name_tok.line}: unsupported directive '!{name_tok.value}' ignored"
+        )
+
+    def _directive_identifiers(self, scope: str, line: int) -> None:
+        # hierarchical|flat — identifier scoping is not yet implemented;
+        # flat resolution applies regardless of the requested mode.
+        if self._match(IDENT) and self._peek().line == line:
+            self._advance()
+
+    def _warn(self, message: str) -> None:
+        self._warnings.append(message)
+        warnings.warn(message, UnsupportedFeatureWarning, stacklevel=2)
+
     def _parse_model(self, ws: Workspace) -> None:
         self._advance()  # consume 'model'
         self._expect(LBRACE)
@@ -232,6 +289,10 @@ class _Parser:
 
     def _parse_model_item(self, ws: Workspace, parent_id: str | None) -> None:
         tok = self._peek()
+
+        if tok.type == BANG:
+            self._parse_directive("model")
+            return
 
         # relationship: source -> dest ...
         if tok.type == IDENT and self._lookahead_is_arrow():
@@ -304,6 +365,16 @@ class _Parser:
         tags_str = self._optional_string()
         tags = [t.strip() for t in tags_str.split(",")] if tags_str else []
 
+        # deploymentNode <name> [description] [technology] [tags] [instances]
+        instances = 1
+        if kw == "deploymentnode":
+            if self._match(NUMBER):
+                instances = int(self._advance().value)
+            elif self._match(STRING):
+                raw = self._advance().value.strip('"')
+                if raw.isdigit():
+                    instances = int(raw)  # ranges like "0..N" keep the default
+
         elem_id = alias or name.replace(" ", "_").lower()
 
         if kw == "person":
@@ -318,20 +389,22 @@ class _Parser:
             ws.people.append(elem)
             if alias:
                 self._id_map[alias] = elem_id
+            if self._match(LBRACE):
+                self._parse_element_body(ws, elem, "person")
         elif kw == "softwaresystem":
             location = Location.EXTERNAL if "External" in tags else Location.UNSPECIFIED
-            elem = SoftwareSystem(
+            sys_elem = SoftwareSystem(
                 id=elem_id,
                 name=name,
                 description=description,
                 tags=tags,
                 location=location,
             )
-            ws.software_systems.append(elem)
+            ws.software_systems.append(sys_elem)
             if alias:
                 self._id_map[alias] = elem_id
             if self._match(LBRACE):
-                self._parse_software_system_body(ws, elem)
+                self._parse_element_body(ws, sys_elem, "softwaresystem")
         elif kw == "container":
             system = self._find_system(ws, parent_id)
             if system is not None:
@@ -347,7 +420,7 @@ class _Parser:
                 if alias:
                     self._id_map[alias] = elem_id
                 if self._match(LBRACE):
-                    self._parse_container_body(ws, c)
+                    self._parse_element_body(ws, c, "container")
         elif kw == "component":
             container = self._find_container(ws, parent_id)
             if container is not None:
@@ -363,7 +436,7 @@ class _Parser:
                 if alias:
                     self._id_map[alias] = elem_id
                 if self._match(LBRACE):
-                    self._skip_block()
+                    self._parse_element_body(ws, comp, "component")
         elif kw == "deploymentnode":
             parent_node = self._find_deployment_node(ws, parent_id)
             node = DeploymentNode(
@@ -371,6 +444,7 @@ class _Parser:
                 name=name,
                 description=description,
                 technology=technology,
+                instances=instances,
                 tags=tags,
                 environment=self._current_environment,
                 parent_id=parent_node.id if parent_node is not None else "",
@@ -382,7 +456,7 @@ class _Parser:
             if alias:
                 self._id_map[alias] = elem_id
             if self._match(LBRACE):
-                self._parse_deployment_node_body(ws, node)
+                self._parse_element_body(ws, node, "deploymentnode")
         elif kw == "infrastructurenode":
             parent_node = self._find_deployment_node(ws, parent_id)
             infra = InfrastructureNode(
@@ -398,7 +472,7 @@ class _Parser:
             if alias:
                 self._id_map[alias] = elem_id
             if self._match(LBRACE):
-                self._skip_block()
+                self._parse_element_body(ws, infra, "infrastructurenode")
         elif kw == "softwaresysteminstance":
             ref = ref_ident or name
             system_id = self._id_map.get(ref, ref)
@@ -412,65 +486,144 @@ class _Parser:
             if parent_node is not None:
                 parent_node.software_system_instances.append(inst)
             self._id_map[alias or inst_id] = inst_id
+            if self._match(LBRACE):
+                self._parse_element_body(ws, inst, "softwaresysteminstance")
         elif kw == "containerinstance":
             ref = ref_ident or name
             container_id = self._id_map.get(ref, ref)
             inst_id = alias or self._unique_id(f"{container_id}_instance")
-            inst = ContainerInstance(
+            cont_inst = ContainerInstance(
                 id=inst_id,
                 container_id=container_id,
                 environment=self._current_environment,
             )
             parent_node = self._find_deployment_node(ws, parent_id)
             if parent_node is not None:
-                parent_node.container_instances.append(inst)
+                parent_node.container_instances.append(cont_inst)
             self._id_map[alias or inst_id] = inst_id
+            if self._match(LBRACE):
+                self._parse_element_body(ws, cont_inst, "containerinstance")
 
-    def _parse_software_system_body(
-        self, ws: Workspace, system: SoftwareSystem
-    ) -> None:
+    def _parse_element_body(self, ws: Workspace, element: Any, kind: str) -> None:
+        """Parse the ``{ ... }`` body shared by every element kind.
+
+        Handles the metadata keywords common to all elements, relationships,
+        directives, ``group`` blocks, and the child-element keywords valid
+        for ``kind``; anything else is skipped.
+        """
         self._expect(LBRACE)
+        children = _CHILD_KEYWORDS.get(kind, ())
         while not self._match(RBRACE, EOF):
             tok = self._peek()
-            if tok.type == IDENT and tok.value.lower() == "container":
-                if self._lookahead_is_equals():
-                    alias = None
-                    self._parse_model_item(ws, parent_id=system.id)
-                else:
-                    self._parse_model_item(ws, parent_id=system.id)
-            elif tok.type == IDENT and self._lookahead_is_equals():
-                # alias = container ...
+            if tok.type == BANG:
+                self._parse_directive("element")
+                continue
+            if tok.type == IDENT and self._lookahead_is_arrow():
+                self._parse_relationship()
+                continue
+            if tok.type == IDENT and self._lookahead_is_equals():
                 alias = self._advance().value
                 self._expect(EQUALS)
-                # peek at type
-                if self._peek().value.lower() == "container":
-                    self._parse_element(ws, alias=alias, parent_id=system.id)
+                if self._peek().value.lower() in children:
+                    self._parse_element(ws, alias=alias, parent_id=element.id)
                 else:
                     self._advance()
-            elif tok.type == IDENT and self._lookahead_is_arrow():
-                self._parse_relationship()
-            else:
-                self._advance()
+                continue
+            if tok.type == IDENT:
+                kw = tok.value.lower()
+                if kw in children:
+                    self._parse_element(ws, alias=None, parent_id=element.id)
+                    continue
+                if kw == "group":
+                    self._parse_group(ws, element.id)
+                    continue
+                if self._parse_common_element_keyword(element, kw):
+                    continue
+            self._advance()
         self._expect(RBRACE)
 
-    def _parse_container_body(self, ws: Workspace, container: Container) -> None:
+    def _parse_common_element_keyword(self, element: Any, kw: str) -> bool:
+        """Handle a metadata keyword valid on any element; True if handled."""
+        if kw == "description" and hasattr(element, "description"):
+            self._advance()
+            element.description = self._optional_string()
+            return True
+        if kw == "technology" and hasattr(element, "technology"):
+            self._advance()
+            element.technology = self._optional_string()
+            return True
+        if kw == "url" and hasattr(element, "url"):
+            self._advance()
+            # URLs must be quoted (the tokenizer has no unquoted-URL token)
+            element.url = self._optional_string()
+            return True
+        if kw in ("tag", "tags") and hasattr(element, "tags"):
+            line = self._advance().line
+            while self._match(STRING) and self._peek().line == line:
+                raw = self._advance().value.strip('"')
+                element.tags.extend(t.strip() for t in raw.split(",") if t.strip())
+            return True
+        if kw == "properties" and hasattr(element, "properties"):
+            self._advance()
+            element.properties.update(self._parse_properties_block())
+            return True
+        if kw == "perspectives" and hasattr(element, "perspectives"):
+            self._advance()
+            element.perspectives.extend(self._parse_perspectives_block())
+            return True
+        return False
+
+    def _parse_properties_block(self) -> dict[str, str]:
+        """Parse ``{ <name> <value> ... }`` name/value pairs, one per line."""
+        props: dict[str, str] = {}
+        if not self._match(LBRACE):
+            return props
         self._expect(LBRACE)
         while not self._match(RBRACE, EOF):
-            tok = self._peek()
-            if tok.type == IDENT and tok.value.lower() == "component":
-                self._parse_model_item(ws, parent_id=container.id)
-            elif tok.type == IDENT and self._lookahead_is_equals():
-                alias = self._advance().value
-                self._expect(EQUALS)
-                if self._peek().value.lower() == "component":
-                    self._parse_element(ws, alias=alias, parent_id=container.id)
-                else:
-                    self._advance()
-            elif tok.type == IDENT and self._lookahead_is_arrow():
-                self._parse_relationship()
-            else:
+            if not self._match(STRING, IDENT, NUMBER, COLOR):
                 self._advance()
+                continue
+            tok = self._advance()
+            name = tok.value.strip('"')
+            value = ""
+            if (
+                self._match(STRING, IDENT, NUMBER, COLOR)
+                and self._peek().line == tok.line
+            ):
+                value = self._advance().value.strip('"')
+            # extra tokens on the same line are ignored
+            while (
+                self._match(STRING, IDENT, NUMBER, COLOR)
+                and self._peek().line == tok.line
+            ):
+                self._advance()
+            props[name] = value
         self._expect(RBRACE)
+        return props
+
+    def _parse_perspectives_block(self) -> list[Perspective]:
+        """Parse ``{ <name> <description> [value] ... }`` lines."""
+        perspectives: list[Perspective] = []
+        if not self._match(LBRACE):
+            return perspectives
+        self._expect(LBRACE)
+        while not self._match(RBRACE, EOF):
+            if not self._match(STRING, IDENT):
+                self._advance()
+                continue
+            tok = self._advance()
+            values = [tok.value.strip('"')]
+            while self._match(STRING, IDENT) and self._peek().line == tok.line:
+                values.append(self._advance().value.strip('"'))
+            perspectives.append(
+                Perspective(
+                    name=values[0],
+                    description=values[1] if len(values) > 1 else "",
+                    value=values[2] if len(values) > 2 else "",
+                )
+            )
+        self._expect(RBRACE)
+        return perspectives
 
     def _parse_enterprise(self, ws: Workspace) -> None:
         self._advance()  # consume 'enterprise'
@@ -520,44 +673,23 @@ class _Parser:
             n += 1
         return f"{base}_{n}"
 
-    def _parse_deployment_node_body(self, ws: Workspace, node: DeploymentNode) -> None:
-        self._expect(LBRACE)
-        while not self._match(RBRACE, EOF):
-            tok = self._peek()
-            if tok.type == IDENT and self._lookahead_is_arrow():
-                self._parse_relationship()
-            elif tok.type == IDENT and self._lookahead_is_equals():
-                alias = self._advance().value
-                self._expect(EQUALS)
-                self._parse_element(ws, alias=alias, parent_id=node.id)
-            elif tok.type == IDENT:
-                kw = tok.value.lower()
-                if kw in (
-                    "deploymentnode",
-                    "infrastructurenode",
-                    "softwaresysteminstance",
-                    "containerinstance",
-                ):
-                    self._parse_element(ws, alias=None, parent_id=node.id)
-                else:
-                    self._advance()
-            else:
-                self._advance()
-        self._expect(RBRACE)
-
     def _parse_relationship(self) -> None:
         src = self._advance().value
-        # skip optional dot-notation (src.child -> ...)
-        while self._match(IDENT) and self._peek_value() == ".":
-            self._advance()
-            if self._match(IDENT):
-                self._advance()
         self._expect(ARROW)
         dst = self._advance().value
         description = self._optional_string()
         technology = self._optional_string()
-        self._rel_buffer.append((src, dst, description, technology))
-        # skip optional tags string and braces
+        # source/destination hold raw DSL identifiers; parse() resolves them
+        # once the whole model is known.
+        self._rel_buffer.append(
+            Relationship(
+                source_id=src,
+                destination_id=dst,
+                description=description,
+                technology=technology,
+            )
+        )
+        # skip optional tags string and braces (parsed in a later phase)
         self._optional_string()
         if self._match(LBRACE):
             self._skip_block()
@@ -567,6 +699,9 @@ class _Parser:
         self._expect(LBRACE)
         while not self._match(RBRACE, EOF):
             tok = self._peek()
+            if tok.type == BANG:
+                self._parse_directive("views")
+                continue
             if tok.type != IDENT:
                 self._advance()
                 continue
@@ -780,6 +915,9 @@ class _Parser:
 
     def _parse_view_item(self, view: View) -> None:
         tok = self._peek()
+        if tok.type == BANG:
+            self._parse_directive("view")
+            return
         # Dynamic views list ordered interaction steps: `a -> b "description"`.
         # Steps are stored as RelationshipViews whose id encodes the
         # endpoints (`src__dst`) and whose order is the 1-based step number.
