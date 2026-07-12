@@ -2,6 +2,22 @@
 
 Python implementation of [Structurizr](https://structurizr.com/) for architecture modeling and C4 diagram generation.
 
+## Install
+
+Published on PyPI as **`pystructurizr-studio`** (the name `pystructurizr`
+belongs to an unrelated project); the import package and the CLI are
+still `pystructurizr`:
+
+```bash
+pipx install pystructurizr-studio          # or: pip install pystructurizr-studio
+pystructurizr webapp my-architecture.dsl
+
+# or run without installing:
+uvx --from pystructurizr-studio pystructurizr webapp my-architecture.dsl
+```
+
+Requires Python 3.13+ (uv/uvx can provision it automatically).
+
 ## Quick Start
 
 ```python

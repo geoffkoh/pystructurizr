@@ -1,15 +1,32 @@
 [project]
-name = "pystructurizr"
+# Published as "pystructurizr-studio" (the PyPI name "pystructurizr" is an
+# unrelated project); the import package and CLI are still "pystructurizr".
+name = "pystructurizr-studio"
 version = "0.1.0"
 description = "Parse Structurizr DSL/JSON and generate C4 diagrams in Mermaid, with a CLI and a React web app"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Geoffrey Koh" }]
 requires-python = ">=3.13"
+keywords = ["structurizr", "c4", "architecture", "diagrams", "dsl"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Documentation",
+    "Topic :: Software Development :: Documentation",
+]
 dependencies = [
     "click>=8.1",
     "pydantic>=2.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
 ]
+
+[project.urls]
+Repository = "https://github.com/geoffkoh/pystructurizr"
 
 [project.optional-dependencies]
 dev = [
@@ -23,6 +40,10 @@ pystructurizr = "pystructurizr.cli.main:cli"
 [build-system]
 requires = ["uv_build>=0.11.8,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The distribution is pystructurizr-studio but the module stays pystructurizr.
+module-name = "pystructurizr"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
