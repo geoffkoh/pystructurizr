@@ -28,6 +28,7 @@ from pystructurizr.models import (
     Relationship,
     SoftwareSystem,
     View,
+    FilterMode,
     ViewElement,
     ViewType,
     Workspace,
@@ -634,6 +635,72 @@ def _dynamic_data(workspace: Workspace, view: View) -> GraphData:
     return {"nodes": nodes, "edges": edges}
 
 
+def base_view(workspace: Workspace, view: View) -> View | None:
+    """Resolve a filtered view's base view by key.
+
+    A base can be any non-filtered view; chaining filtered views is not
+    supported (as in Structurizr).
+    """
+    for candidate in workspace.views:
+        if candidate.key == view.base_view_key and candidate.type != ViewType.FILTERED:
+            return candidate
+    return None
+
+
+def _filtered_data(
+    workspace: Workspace, view: View, expand: set[str] | None
+) -> GraphData:
+    """Build graph data for a filtered view: the base view minus/plus tags.
+
+    ``include`` mode keeps elements carrying at least one of the filter
+    tags, ``exclude`` mode removes them; implicit tags (``Element``,
+    ``Person``, ``Software System``, ...) participate, matching Structurizr
+    semantics. Boundaries survive the tag filter but are pruned once they
+    contain nothing; edges survive only if both endpoints do.
+    """
+    base = base_view(workspace, view)
+    if base is None:
+        return {"nodes": [], "edges": []}
+    data = build_view_graph(workspace, base, expand)
+    include = view.filter_mode != FilterMode.EXCLUDE
+    wanted = set(view.filter_tags)
+
+    def matches(node_data: dict[str, Any]) -> bool:
+        implicit = _IMPLICIT_TAGS.get(node_data.get("kind", ""))
+        tags = {
+            "Element",
+            *((implicit,) if implicit else ()),
+            *node_data.get("tags", []),
+        }
+        return bool(tags & wanted)
+
+    kept = [
+        node
+        for node in data["nodes"]
+        if node["data"].get("kind") == "boundary" or matches(node["data"]) == include
+    ]
+
+    # Boundaries left with no children (transitively) disappear too.
+    while True:
+        occupied = {node.get("parentId") for node in kept}
+        empties = {
+            node["id"]
+            for node in kept
+            if node["data"].get("kind") == "boundary" and node["id"] not in occupied
+        }
+        if not empties:
+            break
+        kept = [node for node in kept if node["id"] not in empties]
+
+    ids = {node["id"] for node in kept}
+    edges = [
+        edge
+        for edge in data["edges"]
+        if edge["source"] in ids and edge["target"] in ids
+    ]
+    return {"nodes": kept, "edges": edges}
+
+
 def build_view_graph(
     workspace: Workspace, view: View, expand: set[str] | None = None
 ) -> GraphData:
@@ -656,6 +723,8 @@ def build_view_graph(
         return _deployment_data(workspace, view)
     if view.type == ViewType.DYNAMIC:
         return _dynamic_data(workspace, view)
+    if view.type == ViewType.FILTERED:
+        return _filtered_data(workspace, view, expand)
 
     parents = _parent_ids(workspace)
     visible = _visible_ids(workspace, view)
