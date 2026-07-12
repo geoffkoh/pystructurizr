@@ -14,9 +14,12 @@ from pystructurizr.webapp.loader import WorkspaceLoadError, load_workspace
 def _load_workspace(path: Path) -> Workspace:
     """Load a workspace, mapping loader errors to a CLI-friendly message."""
     try:
-        return load_workspace(path)
+        workspace = load_workspace(path)
     except WorkspaceLoadError as exc:
         raise click.BadParameter(str(exc)) from exc
+    for warning in workspace.parse_warnings:
+        click.echo(f"warning: {warning}", err=True)
+    return workspace
 
 
 @click.group()
