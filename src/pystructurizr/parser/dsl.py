@@ -16,6 +16,7 @@ from typing import Any
 
 from pystructurizr.parser.docs import load_decisions, load_sections, markdown_files
 from pystructurizr.models import (
+    Animation,
     AutomaticLayout,
     Border,
     Component,
@@ -117,6 +118,17 @@ def _tokenize(text: str) -> list[Token]:
 _SHAPE_MAP = {shape.value.lower(): shape for shape in Shape}
 _BORDER_MAP = {border.value.lower(): border for border in Border}
 
+_RANK_DIRECTION_MAP = {
+    "tb": RankDirection.TOP_BOTTOM,
+    "bt": RankDirection.BOTTOM_TOP,
+    "lr": RankDirection.LEFT_RIGHT,
+    "rl": RankDirection.RIGHT_LEFT,
+    "topbottom": RankDirection.TOP_BOTTOM,
+    "bottomtop": RankDirection.BOTTOM_TOP,
+    "leftright": RankDirection.LEFT_RIGHT,
+    "rightleft": RankDirection.RIGHT_LEFT,
+}
+
 # Child-element keywords allowed inside each element kind's body.
 _CHILD_KEYWORDS: dict[str, tuple[str, ...]] = {
     "softwaresystem": ("container",),
@@ -154,6 +166,8 @@ class _Parser:
         self._group_stack: list[str] = []
         # deploymentGroup declarations: alias/name → group name
         self._deployment_groups: dict[str, str] = {}
+        # key of the view marked `default`, applied to the configuration
+        self._default_view_key: str = ""
 
     @property
     def _current_group(self) -> str:
@@ -198,6 +212,8 @@ class _Parser:
                 rel.destination_id, rel.destination_id
             )
             ws.relationships.append(rel)
+        if self._default_view_key:
+            ws.views.configuration.default_view = self._default_view_key
         ws.parse_warnings = self._warnings
         return ws
 
@@ -852,6 +868,10 @@ class _Parser:
                 ws.views.append(self._parse_view(ViewType.DYNAMIC))
             elif kw == "deployment":
                 ws.views.append(self._parse_view(ViewType.DEPLOYMENT))
+            elif kw == "custom":
+                ws.views.append(self._parse_view(ViewType.CUSTOM))
+            elif kw == "image":
+                ws.views.append(self._parse_image_view())
             elif kw == "styles":
                 self._parse_styles(ws)
             elif kw in ("theme", "themes"):
@@ -966,8 +986,8 @@ class _Parser:
     def _parse_view(self, view_type: ViewType) -> View:
         self._advance()  # consume keyword
         element_id = ""
-        if view_type == ViewType.SYSTEM_LANDSCAPE:
-            pass  # landscape views are unscoped; the first token is the key
+        if view_type in (ViewType.SYSTEM_LANDSCAPE, ViewType.CUSTOM):
+            pass  # unscoped views; the first token is the key
         elif self._match(WILDCARD):
             self._advance()  # deployment scope "*" means unscoped
         elif self._match(IDENT):
@@ -999,6 +1019,49 @@ class _Parser:
             self._expect(LBRACE)
             while not self._match(RBRACE, EOF):
                 self._parse_view_item(view)
+            self._expect(RBRACE)
+        return view
+
+    def _parse_image_view(self) -> View:
+        """Parse ``image <*|element> [key] { <source keywords> }``.
+
+        Body keywords: ``plantuml``/``mermaid``/``image`` with a quoted
+        source, ``kroki <format> <source>``, and ``title``. Sources must be
+        quoted (the tokenizer has no token for unquoted URLs).
+        """
+        self._advance()  # consume 'image'
+        element_id = ""
+        if self._match(WILDCARD):
+            self._advance()
+        elif self._match(IDENT):
+            raw_id = self._advance().value
+            element_id = self._id_map.get(raw_id, raw_id)
+        key = ""
+        if self._match(IDENT):
+            key = self._advance().value
+        elif self._match(STRING):
+            key = self._advance().value.strip('"')
+        view = View(
+            type=ViewType.IMAGE,
+            key=key or element_id or "image",
+            element_id=element_id,
+        )
+        if self._match(LBRACE):
+            self._expect(LBRACE)
+            while not self._match(RBRACE, EOF):
+                if not self._match(IDENT):
+                    self._advance()
+                    continue
+                kw = self._advance().value.lower()
+                if kw in ("plantuml", "mermaid", "image"):
+                    view.content = self._optional_string()
+                    view.content_type = kw
+                elif kw == "kroki":
+                    fmt = self._optional_ident()
+                    view.content = self._optional_string()
+                    view.content_type = f"kroki/{fmt}" if fmt else "kroki"
+                elif kw == "title":
+                    view.title = self._optional_string()
             self._expect(RBRACE)
         return view
 
@@ -1092,23 +1155,20 @@ class _Parser:
                 view.excluded_ids.extend(self._idents_on_line(line))
                 return
             if kw == "autolayout":
-                self._advance()
-                direction_str = self._optional_ident().lower()
-                _RANK_DIRECTION_MAP = {
-                    "tb": RankDirection.TOP_BOTTOM,
-                    "bt": RankDirection.BOTTOM_TOP,
-                    "lr": RankDirection.LEFT_RIGHT,
-                    "rl": RankDirection.RIGHT_LEFT,
-                    "topbottom": RankDirection.TOP_BOTTOM,
-                    "bottomtop": RankDirection.BOTTOM_TOP,
-                    "leftright": RankDirection.LEFT_RIGHT,
-                    "rightleft": RankDirection.RIGHT_LEFT,
-                }
+                # autoLayout [direction] [rankSeparation] [nodeSeparation]
+                line = self._advance().line
+                direction_str = ""
+                if self._match(IDENT) and self._peek().line == line:
+                    direction_str = self._advance().value.lower()
                 rank_dir = _RANK_DIRECTION_MAP.get(
                     direction_str, RankDirection.TOP_BOTTOM
                 )
-                self._optional_string()  # rank separation (ignored for now)
-                view.auto_layout = AutomaticLayout(rank_direction=rank_dir)
+                layout = AutomaticLayout(rank_direction=rank_dir)
+                if self._match(NUMBER) and self._peek().line == line:
+                    layout.rank_separation = int(self._advance().value)
+                if self._match(NUMBER) and self._peek().line == line:
+                    layout.node_separation = int(self._advance().value)
+                view.auto_layout = layout
                 return
             if kw == "title":
                 self._advance()
@@ -1118,12 +1178,34 @@ class _Parser:
                 self._advance()
                 view.description = self._optional_string()
                 return
+            if kw == "default":
+                self._advance()
+                self._default_view_key = view.key
+                return
+            if kw == "properties":
+                self._advance()
+                view.properties.update(self._parse_properties_block())
+                return
             if kw == "animation":
                 self._advance()
                 if self._match(LBRACE):
-                    self._skip_block()
+                    self._parse_animation(view)
                 return
         self._advance()
+
+    def _parse_animation(self, view: View) -> None:
+        """Parse ``animation { <ids...> ... }`` — one step per line."""
+        self._expect(LBRACE)
+        while not self._match(RBRACE, EOF):
+            if self._match(IDENT):
+                ids = self._idents_on_line(self._peek().line)
+                if ids:
+                    view.animations.append(
+                        Animation(order=len(view.animations) + 1, element_ids=ids)
+                    )
+            else:
+                self._advance()
+        self._expect(RBRACE)
 
     def _skip_block(self) -> None:
         self._expect(LBRACE)

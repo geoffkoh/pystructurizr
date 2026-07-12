@@ -126,17 +126,26 @@ def _find_view(workspace: Workspace, key: str) -> View:
 
 
 def _views_index(workspace: Workspace) -> list[dict[str, Any]]:
-    """Return the serialisable index of all views in ``workspace``."""
-    return [
+    """Return the serialisable index of all views in ``workspace``.
+
+    The DSL ``default`` view (when set) is flagged and listed first so the
+    frontend's pick-the-first-view behaviour opens it initially.
+    """
+    default_key = workspace.views.configuration.default_view
+    entries = [
         {
             "key": view.key,
             "type": view.type.value,
             "title": view.title,
             "element_id": view.element_id,
             "supported": graph.is_supported(view),
+            "default": bool(default_key) and view.key == default_key,
         }
         for view in workspace.views
     ]
+    if default_key:
+        entries.sort(key=lambda entry: not entry["default"])
+    return entries
 
 
 _WORKSPACE_RE = re.compile(r"^\s*workspace\b", re.MULTILINE)

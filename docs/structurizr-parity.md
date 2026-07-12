@@ -34,13 +34,14 @@ implemented every item in the original recommended roadmap.
 | Themes (remote theme URLs) | ✅ | ✅ | `theme "https://..."` fetched, cached and merged (workspace styles win); official AWS/Azure/GCP themes attach service logo icons |
 | Element icons | ✅ | ✅ | `icon` style property and theme icons render in the node |
 | Element metadata (`[Container: Tech]` + description) | ✅ | ✅ | |
-| Auto-layout | ✅ (dagre, per-view direction) | ✅ | Recursive compound dagre; honours `autoLayout lr/tb/bt/rl` |
+| Auto-layout | ✅ (dagre, per-view direction) | ✅ | Recursive compound dagre; honours `autoLayout lr/tb/bt/rl`; rank/node separations parsed and sent to the graph API (`rankSeparation`/`nodeSeparation`) |
+| Default view (`default` keyword) | ✅ | ✅ | Recorded in the configuration; views index flags it and lists it first so the webapp opens it |
 | Drag nodes / persist layout | ✅ (full editor) | ✅ | Drag autosaves to a `<source>.layout.json` sidecar, restored on load and live reload; Reset returns to auto-layout. Multi-level-nested views re-run auto-layout on restore |
 | Edge routing | ✅ (orthogonal/curved, manual vertices) | ✅ | Bezier / straight / step / smooth-step, centre-anchored floating anchors; no manual vertices |
 | PNG/SVG export | ✅ | ✅ | Toolbar buttons; diagram-bounds crop, 2× PNG |
 | Filtered views (tag include/exclude) | ✅ | ✅ | `filtered <baseKey> <include\|exclude> <tags> [key] [title]`; implicit tags participate; empty boundaries pruned; layout direction inherited from the base view |
-| Custom / image views | ✅ | ❌ | Long tail |
-| Perspectives / animation of static views / health checks | ✅ | ❌ | Long tail |
+| Custom / image views | ✅ | ◐ | Parsed from DSL + JSON round-trip; not yet rendered in the webapp |
+| Perspectives / animation of static views / health checks | ✅ | ◐ | Parsed from DSL + JSON export; not rendered |
 
 ## Navigation & exploration
 
