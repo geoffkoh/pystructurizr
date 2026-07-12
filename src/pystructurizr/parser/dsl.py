@@ -26,6 +26,7 @@ from pystructurizr.models import (
     ElementStyle,
     Enterprise,
     FilterMode,
+    HttpHealthCheck,
     InfrastructureNode,
     Location,
     Person,
@@ -151,6 +152,8 @@ class _Parser:
         self._current_environment: str = ""
         # active group names while parsing nested group blocks
         self._group_stack: list[str] = []
+        # deploymentGroup declarations: alias/name → group name
+        self._deployment_groups: dict[str, str] = {}
 
     @property
     def _current_group(self) -> str:
@@ -325,6 +328,7 @@ class _Parser:
                 "infrastructurenode",
                 "softwaresysteminstance",
                 "containerinstance",
+                "deploymentgroup",
                 "element",
             ):
                 self._parse_element(ws, alias=None, parent_id=parent_id)
@@ -357,12 +361,11 @@ class _Parser:
     def _parse_element(
         self, ws: Workspace, alias: str | None, parent_id: str | None
     ) -> None:
-        kw = self._advance().value.lower()
-        # Instances reference an existing element by identifier, not a name:
-        #   containerInstance webApp
-        ref_ident = ""
-        if kw in ("softwaresysteminstance", "containerinstance") and self._match(IDENT):
-            ref_ident = self._advance().value
+        kw_tok = self._advance()
+        kw = kw_tok.value.lower()
+        if kw in ("softwaresysteminstance", "containerinstance"):
+            self._parse_instance(ws, kw, alias, parent_id, kw_tok.line)
+            return
         name = self._optional_string()
         # element <name> [metadata] [description] [tags] — custom elements
         # take a metadata string before the description.
@@ -490,36 +493,13 @@ class _Parser:
                 self._id_map[alias] = elem_id
             if self._match(LBRACE):
                 self._parse_element_body(ws, infra, "infrastructurenode")
-        elif kw == "softwaresysteminstance":
-            ref = ref_ident or name
-            system_id = self._id_map.get(ref, ref)
-            inst_id = alias or self._unique_id(f"{system_id}_instance")
-            inst = SoftwareSystemInstance(
-                id=inst_id,
-                software_system_id=system_id,
-                environment=self._current_environment,
-            )
-            parent_node = self._find_deployment_node(ws, parent_id)
-            if parent_node is not None:
-                parent_node.software_system_instances.append(inst)
-            self._id_map[alias or inst_id] = inst_id
-            if self._match(LBRACE):
-                self._parse_element_body(ws, inst, "softwaresysteminstance")
-        elif kw == "containerinstance":
-            ref = ref_ident or name
-            container_id = self._id_map.get(ref, ref)
-            inst_id = alias or self._unique_id(f"{container_id}_instance")
-            cont_inst = ContainerInstance(
-                id=inst_id,
-                container_id=container_id,
-                environment=self._current_environment,
-            )
-            parent_node = self._find_deployment_node(ws, parent_id)
-            if parent_node is not None:
-                parent_node.container_instances.append(cont_inst)
-            self._id_map[alias or inst_id] = inst_id
-            if self._match(LBRACE):
-                self._parse_element_body(ws, cont_inst, "containerinstance")
+        elif kw == "deploymentgroup":
+            # deploymentGroup declarations only feed the parser registry;
+            # membership is recorded on instances, not the workspace.
+            if name:
+                self._deployment_groups[name] = name
+                if alias:
+                    self._deployment_groups[alias] = name
         elif kw == "element":
             custom = CustomElement(
                 id=elem_id,
@@ -534,6 +514,66 @@ class _Parser:
                 self._id_map[alias] = elem_id
             if self._match(LBRACE):
                 self._parse_element_body(ws, custom, "element")
+
+    def _parse_instance(
+        self,
+        ws: Workspace,
+        kw: str,
+        alias: str | None,
+        parent_id: str | None,
+        line: int,
+    ) -> None:
+        """Parse ``softwareSystemInstance``/``containerInstance``.
+
+        Syntax: ``<keyword> <identifier> [deploymentGroups] [tags]`` — a
+        positional argument whose comma-separated items all name declared
+        deployment groups is the group list; anything else is tags.
+        """
+        ref = ""
+        if self._match(IDENT) and self._peek().line == line:
+            ref = self._advance().value
+        elif self._match(STRING) and self._peek().line == line:
+            ref = self._advance().value.strip('"')
+
+        deployment_groups: list[str] = []
+        tags: list[str] = []
+        while self._match(STRING, IDENT) and self._peek().line == line:
+            raw = self._advance().value.strip('"')
+            items = [t.strip() for t in raw.split(",") if t.strip()]
+            if items and all(item in self._deployment_groups for item in items):
+                deployment_groups.extend(self._deployment_groups[i] for i in items)
+            else:
+                tags.extend(items)
+
+        target_id = self._id_map.get(ref, ref)
+        inst_id = alias or self._unique_id(f"{target_id}_instance")
+        parent_node = self._find_deployment_node(ws, parent_id)
+        if kw == "softwaresysteminstance":
+            inst = SoftwareSystemInstance(
+                id=inst_id,
+                software_system_id=target_id,
+                environment=self._current_environment,
+                deployment_groups=deployment_groups,
+                tags=tags,
+            )
+            if parent_node is not None:
+                parent_node.software_system_instances.append(inst)
+            self._id_map[alias or inst_id] = inst_id
+            if self._match(LBRACE):
+                self._parse_element_body(ws, inst, kw)
+        else:
+            cont_inst = ContainerInstance(
+                id=inst_id,
+                container_id=target_id,
+                environment=self._current_environment,
+                deployment_groups=deployment_groups,
+                tags=tags,
+            )
+            if parent_node is not None:
+                parent_node.container_instances.append(cont_inst)
+            self._id_map[alias or inst_id] = inst_id
+            if self._match(LBRACE):
+                self._parse_element_body(ws, cont_inst, kw)
 
     def _parse_element_body(self, ws: Workspace, element: Any, kind: str) -> None:
         """Parse the ``{ ... }`` body shared by every element kind.
@@ -606,6 +646,18 @@ class _Parser:
         if kw == "perspectives" and hasattr(element, "perspectives"):
             self._advance()
             element.perspectives.extend(self._parse_perspectives_block())
+            return True
+        if kw == "healthcheck" and hasattr(element, "health_checks"):
+            # healthCheck <name> <url> [interval] [timeout]
+            self._advance()
+            check = HttpHealthCheck(
+                name=self._optional_string(), url=self._optional_string()
+            )
+            if self._match(NUMBER):
+                check.interval = int(self._advance().value)
+            if self._match(NUMBER):
+                check.timeout = int(self._advance().value)
+            element.health_checks.append(check)
             return True
         return False
 
