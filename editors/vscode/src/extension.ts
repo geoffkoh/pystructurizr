@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { PreviewManager } from "./preview";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const previews = new PreviewManager();
+  const previews = new PreviewManager(context.globalStorageUri.fsPath);
   context.subscriptions.push(previews);
 
   context.subscriptions.push(

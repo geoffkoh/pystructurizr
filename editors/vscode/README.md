@@ -28,10 +28,28 @@ The extension spawns a local `pystructurizr webapp` server for the file
 server is killed when the preview panel closes. Its logs go to the
 "pystructurizr" output channel.
 
-Requirements: a Python environment that can run pystructurizr. By
-default the server is launched with `uv run pystructurizr` from your
-workspace folder; change the `pystructurizr.serverCommand` setting if
-you use a venv or a global install (e.g. `["pystructurizr"]`).
+**No setup is required.** The backend is resolved automatically, first
+match wins (each attempt is logged to the output channel):
+
+1. the `pystructurizr.serverCommand` setting, when set — always wins;
+2. `pystructurizr` already on your PATH (`pipx install
+   pystructurizr-studio`);
+3. your workspace's own environment via `uv run` (when the folder has a
+   `pyproject.toml`/`uv.lock` and uv is installed);
+4. `uv tool run` installing
+   [`pystructurizr-studio`](https://pypi.org/project/pystructurizr-studio/)
+   from PyPI;
+5. as a last resort, a one-time, checksum-verified download of the
+   [uv](https://github.com/astral-sh/uv) binary into the extension's
+   private storage, which then provisions Python and the package itself.
+
+The first run of rungs 4–5 downloads uv, a managed CPython and the
+wheel (tens of MB, network required) behind a progress notification;
+afterwards everything is cached and startup is fast. On proxied or
+air-gapped machines, install the backend yourself and use rung 1
+(`pystructurizr.serverCommand`) or 2. The
+`pystructurizr.backendSpec` setting overrides which package version the
+uv rungs install.
 
 ## Install
 
