@@ -103,6 +103,11 @@ class View:
     include_all: bool = False
     included_ids: list[str] = field(default_factory=list)
     excluded_ids: list[str] = field(default_factory=list)
+    # raw DSL include/exclude expressions (kept for debuggability; the
+    # resolved element/relationship ids live in the fields around this)
+    include_expressions: list[str] = field(default_factory=list)
+    exclude_expressions: list[str] = field(default_factory=list)
+    excluded_relationship_ids: list[str] = field(default_factory=list)
     auto_layout: Optional[AutomaticLayout] = None
     order: int = 0
     properties: dict[str, str] = field(default_factory=dict)

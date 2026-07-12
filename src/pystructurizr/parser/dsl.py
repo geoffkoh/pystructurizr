@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from pystructurizr.parser.docs import load_decisions, load_sections, markdown_files
+from pystructurizr.parser.expressions import (
+    evaluate as evaluate_expression,
+    is_expression_term,
+    parse_terms,
+)
 from pystructurizr.parser.implied import apply_implied_relationships
 from pystructurizr.models import (
     Animation,
@@ -69,6 +74,10 @@ LBRACE = _TT("LBRACE")
 RBRACE = _TT("RBRACE")
 ARROW = _TT("ARROW")
 EQUALS = _TT("EQUALS")
+EQEQ = _TT("EQEQ")
+NEQ = _TT("NEQ")
+DOT = _TT("DOT")
+COMMA = _TT("COMMA")
 BANG = _TT("BANG")
 WILDCARD = _TT("WILDCARD")
 COLOR = _TT("COLOR")
@@ -88,7 +97,11 @@ _TOKEN_RE = re.compile(
     r"(?P<BLOCK_COMMENT>/\*.*?\*/)|"
     r'(?P<STRING>"(?:[^"\\]|\\.)*")|'
     r"(?P<ARROW>->)|"
+    r"(?P<EQEQ>==)|"
+    r"(?P<NEQ>!=)|"
     r"(?P<EQUALS>=)|"
+    r"(?P<DOT>\.)|"
+    r"(?P<COMMA>,)|"
     r"(?P<LBRACE>\{)|"
     r"(?P<RBRACE>\})|"
     r"(?P<BANG>!)|"
@@ -197,6 +210,8 @@ class _Parser:
         # relationship aliases (`rel = a -> b ...`) for !relationship
         self._rel_aliases: dict[str, Relationship] = {}
         self._implied_relationships = False
+        # include/exclude expression lines, resolved once the model is built
+        self._pending_expressions: list[tuple[View, str, list[tuple[str, str]]]] = []
 
     @property
     def _current_group(self) -> str:
@@ -243,6 +258,7 @@ class _Parser:
             ws.relationships.append(rel)
         if self._implied_relationships:
             apply_implied_relationships(ws)
+        self._resolve_pending_expressions(ws)
         if self._default_view_key:
             ws.views.configuration.default_view = self._default_view_key
         ws.parse_warnings = self._warnings
@@ -325,6 +341,71 @@ class _Parser:
             return self._advance().value
         return ""
 
+    def _resolve_id(self, ref: str) -> str:
+        return self._id_map.get(ref, ref)
+
+    def _ensure_rel_id(self, ws: Workspace, rel: Relationship) -> str:
+        """Return the relationship's id, assigning the next free one if unset."""
+        if not rel.id:
+            taken = {r.id for r in ws.relationships if r.id}
+            n = 1
+            while str(n) in taken:
+                n += 1
+            rel.id = str(n)
+        return rel.id
+
+    def _resolve_pending_expressions(self, ws: Workspace) -> None:
+        """Resolve deferred include/exclude expression lines against the model."""
+        for view, mode, tokens in self._pending_expressions:
+            outcome = evaluate_expression(
+                parse_terms(tokens), ws, ws.relationships, self._resolve_id
+            )
+            if mode == "include":
+                for eid in sorted(outcome.element_ids):
+                    if eid not in view.included_ids:
+                        view.included_ids.append(eid)
+            else:
+                for eid in sorted(outcome.element_ids):
+                    if eid not in view.excluded_ids:
+                        view.excluded_ids.append(eid)
+                for rel in outcome.relationships:
+                    rel_id = self._ensure_rel_id(ws, rel)
+                    if rel_id not in view.excluded_relationship_ids:
+                        view.excluded_relationship_ids.append(rel_id)
+
+    def _capture_expression_line(self, view: View, mode: str, line: int) -> bool:
+        """Defer an include/exclude line to the expression engine if needed.
+
+        Returns True (and consumes the line) when it contains expression
+        syntax; plain identifier lists return False and take the fast path.
+        """
+        i = self._pos
+        collected: list[tuple[str, str]] = []
+        while i < len(self._tokens):
+            tok = self._tokens[i]
+            if tok.line != line or tok.type in (LBRACE, RBRACE, EOF):
+                break
+            collected.append((tok.type, tok.value))
+            i += 1
+        if not collected or not is_expression_term(collected):
+            return False
+        self._pos = i
+        text = " ".join(value for _, value in collected)
+        if mode == "include":
+            view.include_expressions.append(text)
+        else:
+            view.exclude_expressions.append(text)
+        self._pending_expressions.append((view, mode, collected))
+        return True
+
+    def _collect_expression_tokens(self, line: int) -> list[tuple[str, str]]:
+        """Consume and return the raw expression tokens remaining on ``line``."""
+        collected: list[tuple[str, str]] = []
+        while not self._match(LBRACE, RBRACE, EOF) and self._peek().line == line:
+            tok = self._advance()
+            collected.append((tok.type, tok.value))
+        return collected
+
     def _idents_on_line(self, line: int) -> list[str]:
         """Consume identifiers that remain on ``line``, resolved to element ids.
 
@@ -361,7 +442,7 @@ class _Parser:
             handler(scope, name_tok.line)
             return
         while (
-            self._match(IDENT, STRING, NUMBER, COLOR, WILDCARD, EQUALS)
+            self._match(IDENT, STRING, NUMBER, COLOR, WILDCARD, EQUALS, DOT, COMMA)
             and self._peek().line == name_tok.line
         ):
             self._advance()
@@ -407,6 +488,51 @@ class _Parser:
             self._parse_relationship_body(rel)
         elif self._match(LBRACE):
             self._skip_block()
+
+    def _directive_elements(self, scope: str, line: int) -> None:
+        """``!elements <expression> { ... }`` — bulk-modify matching elements."""
+        tokens = self._collect_expression_tokens(line)
+        if not self._match(LBRACE):
+            return
+        targets: list[Any] = []
+        if self._ws is not None and tokens:
+            outcome = evaluate_expression(
+                parse_terms(tokens), self._ws, self._rel_buffer, self._resolve_id
+            )
+            for eid in sorted(outcome.element_ids):
+                element = self._ws.find_element(eid)
+                if element is not None:
+                    targets.append(element)
+        if not targets or self._ws is None:
+            self._skip_block()
+            return
+        # the body applies to every matched element: re-parse it per target
+        start = self._pos
+        for element in targets:
+            self._pos = start
+            kind = type(element).__name__.lower()
+            if kind == "customelement":
+                kind = "element"
+            self._parse_element_body(self._ws, element, kind)
+
+    def _directive_relationships(self, scope: str, line: int) -> None:
+        """``!relationships <expression> { ... }`` — bulk-modify relationships."""
+        tokens = self._collect_expression_tokens(line)
+        if not self._match(LBRACE):
+            return
+        matched: list[Relationship] = []
+        if self._ws is not None and tokens:
+            outcome = evaluate_expression(
+                parse_terms(tokens), self._ws, self._rel_buffer, self._resolve_id
+            )
+            matched = outcome.relationships
+        if not matched:
+            self._skip_block()
+            return
+        start = self._pos
+        for rel in matched:
+            self._pos = start
+            self._parse_relationship_body(rel)
 
     def _warn(self, message: str) -> None:
         self._warnings.append(message)
@@ -798,6 +924,20 @@ class _Parser:
             return True
         return False
 
+    def _dotted_token(self, line: int) -> str:
+        """Consume one value token, joining ``a.b.c`` dotted runs on ``line``."""
+        parts = [self._advance().value.strip('"')]
+        while (
+            self._match(DOT)
+            and self._peek().line == line
+            and self._pos + 1 < len(self._tokens)
+            and self._tokens[self._pos + 1].type in (IDENT, NUMBER)
+            and self._tokens[self._pos + 1].line == line
+        ):
+            self._advance()  # consume '.'
+            parts.append(self._advance().value)
+        return ".".join(parts)
+
     def _parse_properties_block(self) -> dict[str, str]:
         """Parse ``{ <name> <value> ... }`` name/value pairs, one per line."""
         props: dict[str, str] = {}
@@ -808,18 +948,15 @@ class _Parser:
             if not self._match(STRING, IDENT, NUMBER, COLOR):
                 self._advance()
                 continue
-            tok = self._advance()
-            name = tok.value.strip('"')
+            line = self._peek().line
+            name = self._dotted_token(line)
             value = ""
-            if (
-                self._match(STRING, IDENT, NUMBER, COLOR)
-                and self._peek().line == tok.line
-            ):
-                value = self._advance().value.strip('"')
+            if self._match(STRING, IDENT, NUMBER, COLOR) and self._peek().line == line:
+                value = self._dotted_token(line)
             # extra tokens on the same line are ignored
             while (
-                self._match(STRING, IDENT, NUMBER, COLOR)
-                and self._peek().line == tok.line
+                self._match(STRING, IDENT, NUMBER, COLOR, DOT, COMMA)
+                and self._peek().line == line
             ):
                 self._advance()
             props[name] = value
@@ -1354,6 +1491,8 @@ class _Parser:
             kw = tok.value.lower()
             if kw == "include":
                 line = self._advance().line
+                if self._capture_expression_line(view, "include", line):
+                    return
                 if self._match(WILDCARD):
                     self._advance()
                     view.include_all = True
@@ -1362,6 +1501,8 @@ class _Parser:
                 return
             if kw == "exclude":
                 line = self._advance().line
+                if self._capture_expression_line(view, "exclude", line):
+                    return
                 view.excluded_ids.extend(self._idents_on_line(line))
                 return
             if kw == "autolayout":
