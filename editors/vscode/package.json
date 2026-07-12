@@ -85,12 +85,15 @@
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --watch",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package": "npm run compile && vsce package"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.21.5",
-    "typescript": "^5.4.5"
-  }
+    "typescript": "^5.4.5",
+    "@vscode/vsce": "^2.26.0"
+  },
+  "license": "MIT"
 }

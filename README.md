@@ -89,6 +89,18 @@ uv run pystructurizr export workspace.dsl -o workspace.json
 
 Or programmatically via `pystructurizr.generators.json_export.export_json`.
 
+## VS Code Extension
+
+[`editors/vscode/`](./editors/vscode/) ships a VS Code extension with
+Structurizr DSL syntax highlighting and an in-editor C4 diagram preview
+(the full web app in a side panel, live-reloading as you save). Build and
+install it locally:
+
+```bash
+cd editors/vscode && npm install && npm run package
+code --install-extension pystructurizr-vscode-*.vsix
+```
+
 ## React Web App
 
 A React (Vite + TypeScript) single-page app, served by a FastAPI backend
