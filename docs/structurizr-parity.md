@@ -69,6 +69,8 @@ implemented every item in the original recommended roadmap.
 | Live reload on DSL edits | ✅ | ✅ mtime heartbeat over source + `!include` fragments + docs; parse errors keep the last good workspace |
 | In-browser DSL editor | ✅ | ❌ (edit on disk; live reload covers the loop) |
 | Documentation / ADR rendering | ✅ | ✅ `!docs`/`!adrs` directives, TOC reader, ADR status badges |
+| `!const` / `!var` + `${NAME}` substitution | ✅ | ✅ preprocessing pass; const redefinition errors, unknown placeholders left intact |
+| `!script` / `!plugin` / `!components` | ✅ (executes JVM code) | ⚠ never executed: stripped/skipped with an `UnsupportedFeatureWarning`; CLI prints warnings to stderr |
 | Workspace JSON import | ✅ | ✅ |
 | Workspace JSON export (round-trip) | ✅ | ✅ CLI `export` + `generators/json_export` |
 | Layout persistence | ✅ (in workspace) | ✅ (sidecar JSON next to the source) |

@@ -1465,6 +1465,90 @@ def _expand_includes(
     return _INCLUDE_RE.sub(replace, source)
 
 
+# ---------------------------------------------------------------------------
+# !script stripping and !const/!var substitution (preprocessing)
+# ---------------------------------------------------------------------------
+
+_SCRIPT_RE = re.compile(r"^[ \t]*!script\b[^\n{]*\{", re.MULTILINE)
+
+_CONST_RE = re.compile(
+    r"^[ \t]*!(?P<kind>const|constant|var)[ \t]+"
+    r'(?P<name>"[^"]+"|\S+)[ \t]+'
+    r'(?P<value>"(?:[^"\\]|\\.)*"|\S+)[ \t]*$',
+    re.MULTILINE,
+)
+
+_PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z0-9_.\-]+)\}")
+
+
+def _strip_scripts(source: str, warnings_out: list[str]) -> str:
+    """Remove ``!script <lang> { ... }`` blocks, recording a warning each.
+
+    Script bodies are foreign syntax (Groovy/Kotlin/JS) whose strings may
+    contain unbalanced braces, so they are removed textually with a
+    quote-aware brace counter before tokenising.
+    """
+    result = source
+    while True:
+        match = _SCRIPT_RE.search(result)
+        if match is None:
+            return result
+        depth = 1
+        pos = match.end()
+        quote: str | None = None
+        while pos < len(result) and depth > 0:
+            char = result[pos]
+            if quote is not None:
+                if char == "\\":
+                    pos += 1  # skip the escaped character
+                elif char == quote:
+                    quote = None
+            elif char in ('"', "'"):
+                quote = char
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+            pos += 1
+        line = result.count("\n", 0, match.start()) + 1
+        warnings_out.append(
+            f"Line {line}: unsupported directive '!script' ignored (body skipped)"
+        )
+        result = result[: match.start()] + result[pos:]
+
+
+def _apply_constants(source: str) -> str:
+    """Collect ``!const``/``!var`` definitions and substitute ``${NAME}``.
+
+    Constants cannot be redefined (and variables cannot shadow them);
+    variables may be redefined, last value winning. Unknown ``${...}``
+    placeholders are left intact, matching structurizr-java.
+    """
+    values: dict[str, str] = {}
+    constants: set[str] = set()
+
+    def collect(match: re.Match[str]) -> str:
+        kind = match.group("kind")
+        name = match.group("name").strip('"')
+        value = match.group("value").strip('"')
+        is_const = kind in ("const", "constant")
+        if name in constants:
+            raise ParseError(f"Cannot redefine constant {name!r} (!{kind})")
+        if is_const and name in values:
+            raise ParseError(
+                f"Cannot define constant {name!r}: a variable with that name exists"
+            )
+        values[name] = value
+        if is_const:
+            constants.add(name)
+        return ""
+
+    stripped = _CONST_RE.sub(collect, source)
+    if not values:
+        return stripped
+    return _PLACEHOLDER_RE.sub(lambda m: values.get(m.group(1), m.group(0)), stripped)
+
+
 def parse_dsl(source: str, base_dir: str | Path | None = None) -> Workspace:
     """Parse a Structurizr DSL string and return a Workspace.
 
@@ -1478,6 +1562,9 @@ def parse_dsl(source: str, base_dir: str | Path | None = None) -> Workspace:
     """
     resolved = Path(base_dir).resolve() if base_dir is not None else None
     flattened = _expand_includes(source, resolved, ())
+    preprocess_warnings: list[str] = []
+    flattened = _strip_scripts(flattened, preprocess_warnings)
+    flattened = _apply_constants(flattened)
 
     doc_dirs: list[tuple[str, Path]] = []
 
@@ -1494,6 +1581,9 @@ def parse_dsl(source: str, base_dir: str | Path | None = None) -> Workspace:
     flattened = _DOCS_RE.sub(extract_docs, flattened)
     tokens = _tokenize(flattened)
     workspace = _Parser(tokens).parse()
+    for message in preprocess_warnings:
+        warnings.warn(message, UnsupportedFeatureWarning, stacklevel=2)
+    workspace.parse_warnings.extend(preprocess_warnings)
 
     for kind, directory in doc_dirs:
         if kind == "docs":
