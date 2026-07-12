@@ -24,9 +24,11 @@ export interface ElementNodeData {
   technology: string;
   description: string;
   tags: string[];
-  /** Tag-based style overrides from the DSL styles block. */
+  /** Tag-based style overrides from the DSL styles block or a theme. */
   textColor?: string;
   shape?: string;
+  /** Icon image URL (e.g. a cloud-provider service logo from a theme). */
+  icon?: string;
   /** Key of the view this node drills into on double-click, if any. */
   drillKey?: string;
   /** Label of the drill target, used for the hover hint. */
@@ -50,6 +52,12 @@ const SHAPE_CLASSES: Record<string, string> = {
   Circle: "node--circle",
   Ellipse: "node--circle",
   Pipe: "node--pipe",
+  Hexagon: "node--hexagon",
+  Folder: "node--folder",
+  WebBrowser: "node--browser",
+  Window: "node--browser",
+  MobileDevicePortrait: "node--mobile-portrait",
+  MobileDeviceLandscape: "node--mobile-landscape",
 };
 
 /**
@@ -90,6 +98,9 @@ function ElementNodeComponent({ id, data }: NodeProps<ElementNodeData>) {
       }
     >
       <Handle type="target" position={Position.Top} />
+      {data.icon ? (
+        <img className="node__icon" src={data.icon} alt="" loading="lazy" />
+      ) : null}
       <div className="node__label">{data.label}</div>
       <div className="node__kind">{metaLine(data)}</div>
       {data.description ? (

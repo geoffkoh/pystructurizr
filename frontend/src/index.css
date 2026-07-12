@@ -438,6 +438,80 @@ button {
   padding-right: 24px;
 }
 
+.node--hexagon {
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  border: none;
+  padding-left: 34px;
+  padding-right: 34px;
+  min-width: 180px;
+}
+
+.node--folder {
+  border-radius: 0 6px 6px 6px;
+  margin-top: 12px;
+}
+
+.node--folder::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: -1px;
+  width: 42%;
+  height: 12px;
+  background: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.node--browser {
+  border-radius: 6px;
+  margin-top: 14px;
+  overflow: visible;
+}
+
+.node--browser::before {
+  content: "\2022 \2022 \2022";
+  position: absolute;
+  top: -14px;
+  left: -1px;
+  right: -1px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 6px 6px 0 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 7px;
+  line-height: 14px;
+  text-align: left;
+  padding-left: 7px;
+}
+
+.node--mobile-portrait {
+  border-radius: 16px;
+  border-left: 7px solid rgba(0, 0, 0, 0.28);
+  border-right: 7px solid rgba(0, 0, 0, 0.28);
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.node--mobile-landscape {
+  border-radius: 16px;
+  border-top: 7px solid rgba(0, 0, 0, 0.28);
+  border-bottom: 7px solid rgba(0, 0, 0, 0.28);
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+/* Element icon (e.g. a cloud-provider service logo from a theme). */
+.node__icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  margin: 2px auto 4px;
+  pointer-events: none;
+}
+
 .edge-label--active {
   border-color: var(--accent);
   color: var(--accent);

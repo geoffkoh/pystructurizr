@@ -584,13 +584,15 @@ class _Parser:
                 ws.views.append(self._parse_view(ViewType.DEPLOYMENT))
             elif kw == "styles":
                 self._parse_styles(ws)
-            elif kw in (
-                "filtered",
-                "theme",
-                "themes",
-                "branding",
-                "terminology",
-            ):
+            elif kw in ("theme", "themes"):
+                # theme "url" / themes "url" "url" ... — URLs must be quoted
+                # (the tokenizer has no token for unquoted ://... runs).
+                self._advance()
+                while self._match(STRING):
+                    url = self._advance().value.strip('"')
+                    if url:
+                        ws.views.configuration.themes.append(url)
+            elif kw in ("filtered", "branding", "terminology"):
                 self._advance()
                 self._optional_string()
                 if self._match(LBRACE):

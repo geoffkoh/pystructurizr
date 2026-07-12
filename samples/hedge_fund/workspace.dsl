@@ -17,6 +17,10 @@ workspace "Quantia Capital Trading Platform" "Front-to-back trading architecture
     }
 
     views {
+        // AWS service logos for the deployment views (icons load lazily;
+        // offline sessions simply render without them).
+        theme "https://static.structurizr.com/themes/amazon-web-services-2023.01.31/theme.json"
+
         systemLandscape Landscape "Quantia – System Landscape" {
             include *
             autoLayout
