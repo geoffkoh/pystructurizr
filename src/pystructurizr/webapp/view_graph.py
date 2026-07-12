@@ -282,7 +282,10 @@ def _boundary_scope(
 
 
 def _edges(
-    workspace: Workspace, visible: set[str], parents: dict[str, str]
+    workspace: Workspace,
+    visible: set[str],
+    parents: dict[str, str],
+    excluded_relationship_ids: set[str] | None = None,
 ) -> list[GraphEdge]:
     """Build edges between visible nodes, lifting endpoints to ancestors.
 
@@ -290,6 +293,7 @@ def _edges(
     target) pair; distinct direct relationships between the same pair are
     kept (e.g. separate "Reads" and "Writes" relationships).
     """
+    excluded = excluded_relationship_ids or set()
     edges: list[GraphEdge] = []
     seen_pairs: set[tuple[str, str]] = set()
     seen_direct: set[tuple[str, str, str]] = set()
@@ -297,6 +301,8 @@ def _edges(
         # Implied (linked) relationships duplicate what endpoint lifting
         # already infers; rendering both would double the edge.
         if rel.linked_relationship_id:
+            continue
+        if rel.id and rel.id in excluded:
             continue
         src = _lift(rel.source_id, visible, parents)
         dst = _lift(rel.destination_id, visible, parents)
@@ -862,7 +868,12 @@ def build_view_graph(
     nodes = _insert_group_boundaries(workspace, nodes)
     _apply_styles(workspace, nodes)
     _attach_stored_sizes(view, nodes)
-    return {"nodes": nodes, "edges": _edges(workspace, visible, parents)}
+    return {
+        "nodes": nodes,
+        "edges": _edges(
+            workspace, visible, parents, set(view.excluded_relationship_ids)
+        ),
+    }
 
 
 def _insert_group_boundaries(
