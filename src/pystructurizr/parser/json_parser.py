@@ -14,6 +14,7 @@ from typing import Any, Optional
 from pystructurizr.models import (
     Animation,
     AutomaticLayout,
+    Border,
     Branding,
     Component,
     Configuration,
@@ -25,6 +26,7 @@ from pystructurizr.models import (
     DeploymentNode,
     Documentation,
     ElementStyle,
+    Enterprise,
     FilterMode,
     Format,
     HttpHealthCheck,
@@ -39,6 +41,7 @@ from pystructurizr.models import (
     Relationship,
     RelationshipStyle,
     RelationshipView,
+    Shape,
     SoftwareSystem,
     SoftwareSystemInstance,
     Styles,
@@ -378,12 +381,32 @@ def _parse_view(data: dict[str, Any], view_type: ViewType) -> View:
     )
 
 
+def _shape(raw: str | None) -> Optional[Shape]:
+    if raw is None:
+        return None
+    try:
+        return Shape(raw)
+    except ValueError:
+        return None
+
+
+def _border(raw: str | None) -> Optional[Border]:
+    if raw is None:
+        return None
+    try:
+        return Border(raw)
+    except ValueError:
+        return None
+
+
 def _parse_element_style(data: dict[str, Any]) -> ElementStyle:
     return ElementStyle(
         tag=data.get("tag", ""),
         background=data.get("background", ""),
         stroke=data.get("stroke", ""),
         color=data.get("color", ""),
+        shape=_shape(data.get("shape")),
+        border=_border(data.get("border")),
         icon=data.get("icon", ""),
         width=data.get("width"),
         height=data.get("height"),
@@ -602,6 +625,13 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         configuration=_parse_configuration(views_data.get("configuration")),
     )
 
+    enterprise_data = model_data.get("enterprise")
+    enterprise = (
+        Enterprise(name=enterprise_data.get("name", ""))
+        if isinstance(enterprise_data, dict)
+        else None
+    )
+
     workspace_model = Model(
         people=people,
         software_systems=software_systems,
@@ -609,6 +639,7 @@ def _parse_json_dict(data: dict[str, Any]) -> Workspace:
         relationships=relationships,
         deployment_nodes=deployment_nodes,
         deployment_environments=deployment_environments,
+        enterprise=enterprise,
         properties=_properties(model_data.get("properties")),
     )
 

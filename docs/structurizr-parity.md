@@ -62,6 +62,7 @@ implemented every item in the original recommended roadmap.
 | In-browser DSL editor | ✅ | ❌ (edit on disk; live reload covers the loop) |
 | Documentation / ADR rendering | ✅ | ✅ `!docs`/`!adrs` directives, TOC reader, ADR status badges |
 | Workspace JSON import | ✅ | ✅ |
+| Workspace JSON export (round-trip) | ✅ | ✅ CLI `export` + `generators/json_export` |
 | Layout persistence | ✅ (in workspace) | ✅ (sidecar JSON next to the source) |
 | Multi-workspace, users, locking, branches | ✅ | ❌ (single local user by design) |
 | Mermaid export | ❌ (PlantUML et al. via structurizr-export) | ✅ CLI |

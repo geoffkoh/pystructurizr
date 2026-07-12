@@ -76,6 +76,18 @@ for view_name, mermaid_code in diagrams.items():
     print(f"{view_name}:\n{mermaid_code}\n")
 ```
 
+## Workspace JSON Export
+
+Export any workspace (DSL or JSON) back to Structurizr workspace JSON,
+round-tripping with structurizr.com, Structurizr Lite, and this package's
+own parser:
+
+```bash
+uv run pystructurizr export workspace.dsl -o workspace.json
+```
+
+Or programmatically via `pystructurizr.generators.json_export.export_json`.
+
 ## React Web App
 
 A React (Vite + TypeScript) single-page app, served by a FastAPI backend
