@@ -51,8 +51,8 @@ implemented every item in the original recommended roadmap.
 | Drill-out | ◐ (back button) | ✅ breadcrumb + boundary double-click |
 | View list / quick navigation | ✅ | ✅ sidebar |
 | Element tree | ✅ (`tree.jsp`) | ✅ sidebar |
-| Full-model graph exploration | ✅ (`explore.jsp`, d3) | ❌ |
-| Search | ✅ | ❌ |
+| Full-model graph exploration | ✅ (`explore.jsp`, d3) | ✅ Explorer tab: whole static model at a selectable level (systems / containers / components), nested boundaries, declared relationships |
+| Search | ✅ | ✅ Explorer search over every element (name/technology/tags/description/ancestry) with jump-to-element, details panel, "appears in" view links and show-definition |
 | Keyboard shortcuts | ✅ | ✅ j/k views, u up, f fit, p/s export, h hover, ? help overlay |
 
 ## Authoring & workspace management
@@ -90,13 +90,17 @@ PRs #20–#27): tag-based styles, autoLayout direction, PNG/SVG export,
 live reload, system landscape views, dynamic views with animation,
 documentation/ADR pages, and layout persistence.
 
+The full-model explorer and search landed as the Explorer tab (PP-69):
+`GET /api/model/graph` serves the entire static model at a selectable
+abstraction level, with element search, a details panel showing
+relationships and view membership, and show-definition into the Source
+pane. Deployment elements remain view-only.
+
 ### Remaining gaps, should they ever be worth closing
 
-1. **Full-model explorer and search** — a d3-style model graph plus
-   element search outside curated views.
-2. **In-browser DSL editor** — live reload already gives a tight loop
+1. **In-browser DSL editor** — live reload already gives a tight loop
    with an external editor, so this is convenience rather than capability.
-3. **Custom / image views, perspectives** — long-tail Structurizr
+2. **Custom / image views, perspectives** — long-tail Structurizr
    features with niche usage.
-4. **Manual edge vertices** — point-to-point routing control on top of
+3. **Manual edge vertices** — point-to-point routing control on top of
    the floating edges.

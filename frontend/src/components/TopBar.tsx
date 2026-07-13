@@ -1,4 +1,9 @@
-export type AppPage = "diagrams" | "documentation" | "decisions" | "source";
+export type AppPage =
+  | "diagrams"
+  | "explorer"
+  | "documentation"
+  | "decisions"
+  | "source";
 
 interface TopBarProps {
   workspaceName: string | null;
@@ -25,6 +30,7 @@ export function TopBar({
 }: TopBarProps) {
   const tabs: { id: AppPage; label: string }[] = [
     { id: "diagrams", label: "Diagrams" },
+    ...(filePath ? [{ id: "explorer" as const, label: "Explorer" }] : []),
     ...(sectionCount > 0
       ? [{ id: "documentation" as const, label: `Documentation (${sectionCount})` }]
       : []),

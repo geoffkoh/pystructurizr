@@ -85,6 +85,43 @@ export interface LayoutResult {
   saved: string;
 }
 
+/** Abstraction level rendered by the full-model explorer. */
+export type ExplorerLevel = "systems" | "containers" | "components";
+
+/** One entry of the explorer's flat element search index. */
+export interface ModelElement {
+  id: string;
+  name: string;
+  kind: string;
+  technology: string;
+  description: string;
+  tags: string[];
+  /** Human-readable ancestry path, e.g. "Internet Banking › API". */
+  parent: string;
+  /** Shallowest explorer level at which this element has its own node. */
+  level: ExplorerLevel;
+}
+
+/** A declared model relationship (implied ones are excluded). */
+export interface ModelRelationship {
+  id: string;
+  source_id: string;
+  destination_id: string;
+  description: string;
+  technology: string;
+}
+
+/** Response body from GET /api/model/graph. */
+export interface ModelGraphData {
+  nodes: GNode[];
+  edges: GEdge[];
+  rankDirection: "TB" | "BT" | "LR" | "RL";
+  elements: ModelElement[];
+  relationships: ModelRelationship[];
+  /** Element id -> keys of the supported views the element appears in. */
+  views_by_element: Record<string, string[]>;
+}
+
 /** Response body from GET /api/status (live-reload heartbeat). */
 export interface StatusResult {
   path: string | null;

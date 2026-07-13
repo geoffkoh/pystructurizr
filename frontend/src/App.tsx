@@ -13,6 +13,7 @@ import { buildTrail } from "./navigation";
 import { isTypingTarget } from "./shortcuts";
 import { DocsPane } from "./components/DocsPane";
 import { ElementTree } from "./components/ElementTree";
+import { ExplorerPane } from "./components/ExplorerPane";
 import { FilePicker } from "./components/FilePicker";
 import { GraphPane } from "./components/GraphPane";
 import { ShortcutHelp } from "./components/ShortcutHelp";
@@ -155,6 +156,12 @@ export default function App() {
     setPage("source");
   }, []);
 
+  /** "Appears in" link in the Explorer: jump to the view's diagram. */
+  const handleOpenView = useCallback((view: ViewInfo) => {
+    setSelectedView(view);
+    setPage("diagrams");
+  }, []);
+
   const handleSelectFile = useCallback(async (path: string) => {
     setLoadingPath(path);
     setError(null);
@@ -218,6 +225,14 @@ export default function App() {
               views={views}
               workspace={workspace}
               onNavigate={setSelectedView}
+            />
+          ) : page === "explorer" ? (
+            <ExplorerPane
+              views={views}
+              workspace={workspace}
+              reloadTick={reloadTick}
+              onOpenView={handleOpenView}
+              onShowDefinition={handleShowDefinition}
             />
           ) : page === "source" ? (
             <SourcePane reloadTick={reloadTick} focus={codeFocus} />

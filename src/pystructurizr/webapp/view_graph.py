@@ -22,6 +22,7 @@ from pystructurizr.themes import theme_styles
 from pystructurizr.models import (
     Component,
     Container,
+    CustomElement,
     DeploymentNode,
     Location,
     Person,
@@ -39,7 +40,7 @@ GraphNode = dict[str, Any]
 GraphEdge = dict[str, Any]
 GraphData = dict[str, list[Any]]
 
-_Element = Person | SoftwareSystem | Container | Component
+_Element = Person | SoftwareSystem | Container | Component | CustomElement
 
 
 # Element-kind palette. Kept in Python so the JS bridge stays a thin shell
