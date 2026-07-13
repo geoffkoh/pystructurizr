@@ -5,9 +5,11 @@
 // the same origin as the backend.
 
 import type {
+  ExplorerLevel,
   GraphData,
   LayoutResult,
   LoadResult,
+  ModelGraphData,
   SourceResult,
   StatusResult,
   ViewInfo,
@@ -89,6 +91,11 @@ export function getWorkspace(): Promise<Workspace> {
 /** GET /api/views -> the index of views in the loaded workspace. */
 export function listViews(): Promise<ViewInfo[]> {
   return request<ViewInfo[]>("/api/views");
+}
+
+/** GET /api/model/graph -> the full-model explorer graph at a level. */
+export function getModelGraph(level: ExplorerLevel): Promise<ModelGraphData> {
+  return request<ModelGraphData>(`/api/model/graph?level=${level}`);
 }
 
 /** GET /api/views/{key}/graph -> React Flow graph data for a view. */

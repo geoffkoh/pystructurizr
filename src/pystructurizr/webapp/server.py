@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from pystructurizr.models import View, Workspace
 from pystructurizr.parser.locations import element_locations
 from pystructurizr.webapp.view_graph import apply_positions, apply_sizes
-from pystructurizr.webapp import graph
+from pystructurizr.webapp import graph, model_graph
 from pystructurizr.webapp.loader import (
     WorkspaceLoadError,
     load_workspace,
@@ -404,6 +404,28 @@ def create_app(
         """Return the index of all views in the loaded workspace."""
         workspace = _require_workspace(state)
         return _views_index(workspace)
+
+    @app.get("/api/model/graph")
+    def get_model_graph(
+        level: str = "containers", state: AppState = Depends(_get_state)
+    ) -> dict[str, Any]:
+        """Return the full-model explorer graph at the given level.
+
+        ``level`` is one of ``systems``, ``containers`` or ``components``
+        and controls how deep the element hierarchy is exploded. The
+        payload also carries a flat element search index, the declared
+        relationships and an element-to-view-keys membership map.
+        """
+        workspace = _require_workspace(state)
+        if level not in model_graph.LEVELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"level must be one of {', '.join(model_graph.LEVELS)}",
+            )
+        cache_key = f"__model__::{level}"
+        if cache_key not in state.diagrams:
+            state.diagrams[cache_key] = model_graph.model_graph(workspace, level)
+        return state.diagrams[cache_key]
 
     @app.get("/api/views/{key}/graph")
     def get_view_graph(

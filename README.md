@@ -137,6 +137,13 @@ per-view graph come from the parser and `webapp/view_graph`;
 and `deployment` views all render as interactive graphs (other view
 types are flagged "not renderable yet").
 
+The **Explorer** tab renders the entire static model as one graph —
+independent of any curated view — at a selectable abstraction level
+(systems / containers / components), with search across every element
+(press `/`), and a details panel showing an element's metadata,
+relationships, the views it appears in (click to jump) and a
+show-definition link into the Source pane.
+
 The built SPA ships inside the package (`pystructurizr/webapp/static/`),
 so end users need no Node toolchain. To rebuild the frontend after
 changes (requires Node 18+):

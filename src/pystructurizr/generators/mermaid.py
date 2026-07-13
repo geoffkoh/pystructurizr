@@ -10,12 +10,9 @@ Converts a Workspace + View into Mermaid C4 syntax, supporting:
 from __future__ import annotations
 
 from pystructurizr.models import (
-    Component,
     Container,
     Location,
-    Person,
     Relationship,
-    SoftwareSystem,
     View,
     ViewType,
     Workspace,
