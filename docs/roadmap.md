@@ -320,14 +320,48 @@ Two findings that change the plan:
   faking one for every include is worse than injecting a `read()` — but it
   does mean the Confluence macro is not *blocked* on it.
 
-**What remains genuinely unknown is Forge Custom UI's CSP.** WASM
-instantiation typically needs `wasm-unsafe-eval`, and whether Forge
-permits it (via `permissions.content.scripts`) decides the whole design.
-That has to be verified against current Atlassian docs and then proved
-inside a real Forge app; nothing local can answer it.
+**Forge Custom UI runs WebAssembly — measured, not inferred (PP-98,
+August 2026).** The design survives.
 
-If it fails, the damage is contained: view and export are already
-Python-free, so only the authoring path needs a different answer.
+Checking the docs first narrowed the question: Atlassian documents exactly
+five values for `permissions.content.scripts` — `unsafe-inline`,
+`unsafe-hashes`, `unsafe-eval`, `blob:` and script hashes.
+**`wasm-unsafe-eval`, the permission this section originally named, does
+not exist in Forge.** `unsafe-eval` is the CSP superset that also admits
+WASM compilation, and deploying a real app to a real Confluence site
+proved it behaves that way:
+
+| Step, inside the Custom UI iframe | Result |
+| --- | --- |
+| Instantiate an 8-byte WebAssembly module | **yes — 2 ms** |
+| Load Pyodide 0.28 from jsDelivr | yes — 1,393 ms |
+| `micropip` the wheel and parse DSL | yes — 1,972 ms |
+
+So an author waits roughly **3.4 s** on a cold macro edit — the same order
+as the "one-off second or two" the plan assumed, and three times PP-96's
+Node-only figure. Both are one-off: parsing happens at author time, the
+result is stored as workspace JSON, and view time stays Python-free.
+
+Two manifest details worth carrying into the real macro, both learnt the
+hard way here:
+
+- `app.runtime` is required by the schema **even for an app with no
+  functions**. A static Custom UI resource still needs `runtime: name:
+  nodejs22.x`.
+- Egress permissions take the `- address: https://...` object form. The
+  bare-string form deploys and installs, but `forge lint` flags it as
+  deprecated.
+
+Also note the CDN pin decides the Python version: `pyodide@0.28` ships
+CPython **3.13.2** where the npm `pyodide@314` used in PP-96 ships 3.14.2.
+Both clear the `>=3.13` floor, but the pin is load-bearing.
+
+`spikes/forge-csp/` holds the app that established this. It is throwaway —
+delete it once the Confluence macro exists, or promote it.
+
+Had it failed, the damage would have been contained — view and export are
+already Python-free, so only the authoring path needed a different answer.
+That contingency is now moot.
 
 ### Sequencing
 
@@ -336,13 +370,13 @@ Python-free, so only the authoring path needs a different answer.
 ~~GitHub Action~~ (PP-95) (all useful to the local tool on their
 own merits, and none of them depend on Forge) → ~~Pyodide spike~~
 (PP-96, everything but the Forge CSP question) → ~~dependency-free core
-wheel~~ (PP-97) → Forge CSP verification → `SourceResolver` → Confluence macro →
+wheel~~ (PP-97) → ~~Forge CSP verification~~ (PP-98) → `SourceResolver` → Confluence macro →
 github.dev.
 
-**Next up: the Forge CSP verification**, the one remaining item that can
-invalidate a design rather than merely cost time. Splitting the core's
-dependencies out of the wheel can proceed in parallel, since it is
-worthwhile on its own.
+**Next up: `SourceResolver` and then the Confluence macro.** Nothing
+unproven stands between here and a working macro — the CSP question that
+could have invalidated the design is answered, the parser runs in the
+iframe, and the wheel installs from the app's own resources.
 
 ## Delivery conventions (unchanged)
 

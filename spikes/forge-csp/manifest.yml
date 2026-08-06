@@ -1,0 +1,50 @@
+# Forge app for PP-98: can a Custom UI iframe instantiate WebAssembly, and
+# can it load Pyodide from a CDN?
+#
+# Throwaway. It exists to answer one question and should be deleted (or
+# promoted into a real macro) once the answer is recorded in the roadmap.
+#
+# Atlassian documents exactly five values for permissions.content.scripts:
+# unsafe-inline, unsafe-hashes, unsafe-eval, blob:, and script hashes.
+# `wasm-unsafe-eval` — the permission the roadmap originally named — is not
+# among them. `unsafe-eval` is the CSP superset that also admits WASM
+# compilation, so that is what this declares. Whether Forge's CSP actually
+# behaves that way is the thing being tested.
+modules:
+  macro:
+    - key: csp-spike
+      resource: main
+      title: pystructurizr CSP spike
+      description: Reports whether WebAssembly and Pyodide work inside Custom UI.
+
+resources:
+  - key: main
+    path: static
+
+app:
+  id: ari:cloud:ecosystem::app/ac82f26d-f568-484f-ab8f-f99a183deec4
+  # Required by the manifest schema even for an app with no functions:
+  # this spike is a static Custom UI resource and runs no backend code.
+  runtime:
+    name: nodejs22.x
+
+permissions:
+  content:
+    scripts:
+      # PROVEN (PP-98): this is what admits WebAssembly. Forge does not
+      # offer `wasm-unsafe-eval`; `unsafe-eval` is the superset and it
+      # works — an 8-byte module instantiated in 2 ms inside the iframe.
+      - unsafe-eval
+      # Pyodide creates workers and object URLs.
+      - "blob:"
+  external:
+    # Pyodide's runtime, wasm and package wheels all come from here. Both
+    # lists matter: `scripts` to load pyodide.mjs, `fetch.client` for
+    # everything it then downloads itself. The `- address:` object form is
+    # current; the bare-string form deploys but is deprecated.
+    scripts:
+      - address: https://cdn.jsdelivr.net
+    fetch:
+      client:
+        - address: https://cdn.jsdelivr.net
+  scopes: []
